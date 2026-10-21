@@ -1,0 +1,16 @@
+{
+  "target": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo",
+  "total_findings": 1,
+  "findings": [
+    {
+      "source": "PatchProof-IDOR",
+      "category": "Potential IDOR",
+      "severity": "WARNING",
+      "confidence": "MEDIUM",
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+      "line": 40,
+      "message": "Function 'get_document' may retrieve a document without an explicit ownership comparison. Manual review required."
+    }
+  ],
+  "errors": []
+}
