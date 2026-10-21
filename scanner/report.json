@@ -1,5 +1,5 @@
 {
-  "target": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo",
+  "target": "C:\\Users\\Ryan\\AppData\\Local\\Temp\\patchproof-dqj23qbn\\project",
   "total_findings": 1,
   "findings": [
     {
@@ -7,10 +7,11 @@
       "category": "Potential IDOR",
       "severity": "WARNING",
       "confidence": "MEDIUM",
-      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+      "file": "C:\\Users\\Ryan\\AppData\\Local\\Temp\\patchproof-dqj23qbn\\project\\main_vulnerable.py",
       "line": 40,
       "message": "Function 'get_document' may retrieve a document without an explicit ownership comparison. Manual review required."
     }
   ],
+  "test_verification": null,
   "errors": []
 }

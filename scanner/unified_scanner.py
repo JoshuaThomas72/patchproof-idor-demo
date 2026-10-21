@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from .idor_scanner import scan_project
+from .test_runner import run_tests
 
 def run_bandit(project_path: Path) -> dict:
     """Run Bandit only on top-level application Python files."""
@@ -78,10 +79,23 @@ def scan(project_path: str) -> dict:
     bandit_report = run_bandit(root)
     findings.extend(bandit_report["findings"])
 
+    # Run regression tests only for the PatchProof demo project.
+    test_report = None
+
+    if root == Path(__file__).resolve().parent.parent:
+        try:
+            test_report = run_tests()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            test_report = {
+                "passed": False,
+                "error": str(exc),
+            }
+
     report = {
         "target": str(root),
         "total_findings": len(findings),
         "findings": findings,
+        "test_verification": test_report,
         "errors": (
             [bandit_report["error"]]
             if bandit_report["error"]
