@@ -3,7 +3,6 @@ from pydantic import BaseModel
 
 app = FastAPI(title="PatchProof IDOR Demo")
 
-# Demo-only identities and tokens. These are not real credentials.
 TOKENS = {"alice-token": "alice", "bob-token": "bob"}
 DOCUMENTS = {
     "doc-101": {
@@ -42,15 +41,14 @@ def get_document(
     user: str = Header(default=""),
     authorization: str | None = Header(default=None),
 ):
-    # Validate the demo token; ownership is intentionally not checked yet.
     user = signed_in_user(authorization)
 
     document = DOCUMENTS.get(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     if document["owner"] != user:
-        raise HTTPException(status_code=404, detail="Document not found")    
-    # INTENTIONAL IDOR: missing document-owner authorization check.
+        raise HTTPException(status_code=404, detail="Document not found")   
+    # Enforce document ownership before returning document contents. 
     return {
         "requested_by": user,
         "owner": document["owner"],

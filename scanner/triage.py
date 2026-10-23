@@ -163,6 +163,7 @@ def _argv_elements(argv_node, scope, tree):
     return [], "unresolved"
 
 
+
 def _triage_subprocess(tree: ast.AST, line: int) -> dict | None:
     call = _find_subprocess_call(tree, line)
     if call is None:
@@ -170,14 +171,22 @@ def _triage_subprocess(tree: ast.AST, line: int) -> dict | None:
 
     scope = _enclosing_function(tree, call.lineno) or tree
     shell = _shell_value(call)
+
     argv_node = call.args[0] if call.args else next(
         (k.value for k in call.keywords if k.arg == "args"), None
     )
+
     nodes, form = (
         _argv_elements(argv_node, scope, tree)
-        if argv_node is not None else ([], "unresolved")
+        if argv_node is not None
+        else ([], "unresolved")
     )
-    elements = [{"expr": _unparse(n), "kind": _kind(n, scope, tree)} for n in nodes]
+
+    elements = [
+        {"expr": _unparse(n), "kind": _kind(n, scope, tree)}
+        for n in nodes
+    ]
+
     facts = {
         "call": _unparse(call.func),
         "call_line": call.lineno,
@@ -186,40 +195,75 @@ def _triage_subprocess(tree: ast.AST, line: int) -> dict | None:
         "argv_elements": elements,
     }
 
-    # Only rule out the *shell* injection claim, and only when every
-    # precondition is proven. Anything else goes to the LLM unchanged.
+    # Unknown shell settings, dynamic argv, and string commands
+    # must be investigated rather than automatically dismissed.
     if shell is not False or form != "list_literal" or not nodes:
         return None
+
     first = nodes[0]
     first_ok = (
         isinstance(first, ast.Constant)
         and isinstance(first.value, str)
+        and bool(first.value)
         and not first.value.lower().endswith(WINDOWS_SCRIPT_SUFFIXES)
     ) or elements[0]["kind"] == "sys.executable"
-    if not first_ok or any(e["kind"] == "dynamic" for e in elements):
+
+    # A dynamic executable or dynamic argument cannot be proven safe
+    # by this limited deterministic analysis.
+    if not first_ok or any(
+        e["kind"] == "dynamic" for e in elements
+    ):
         return None
 
-    params = [e["expr"] for e in elements if e["kind"] == "parameter"]
+    params = [
+        e["expr"] for e in elements
+        if e["kind"] == "parameter"
+    ]
+
     residual = []
     if params:
         residual.append({
             "class": "argument_injection",
             "severity": "LOW",
             "detail": (
-                f"Caller-supplied value(s) {params} become argv elements. Shell "
-                "metacharacters are inert, but a value starting with '-' could be "
-                "read as an option by the invoked program. Check the callers."
+                f"Caller-supplied value(s) {params} become argv elements. "
+                "List-form execution with shell=False prevents ordinary "
+                "shell metacharacters from being interpreted by a shell, "
+                "but does not rule out option injection or unsafe behavior "
+                "in the invoked program. Review the callers and validate "
+                "arguments against the invoked program's expected inputs."
             ),
         })
+
+        # Do not mark the whole finding as a false positive when
+        # caller-controlled arguments remain.
+        return _decision(
+            "uncertain",
+            "subprocess_shell_risk_reduced",
+            (
+                "The AST supports ruling out ordinary shell command "
+                "injection for this call, but caller-controlled arguments "
+                "leave residual risks that require review."
+            ),
+            claim_ruled_out="shell command injection (CWE-78)",
+            facts=facts,
+            residual_risks=residual,
+        )
+
     return _decision(
         "likely_false_positive",
         "subprocess_list_argv_no_shell",
-        "argv is a literal list, shell is not enabled, and the executable is "
-        "fixed, so shell metacharacters cannot start additional commands.",
+        (
+            "The analyzed call uses a fixed executable, list-form arguments, "
+            "and shell=False. Ordinary shell command injection is not "
+            "indicated by this call. This is not a general guarantee that "
+            "the invoked program or its arguments are safe."
+        ),
         claim_ruled_out="shell command injection (CWE-78)",
         facts=facts,
         residual_risks=residual,
     )
+
 
 
 def _triage_test_assert(rel_path: str, tree: ast.AST, line: int) -> dict | None:
@@ -446,14 +490,22 @@ def triage_candidate(candidate: dict, target: Path) -> dict | None:
     if idor_like and (path.suffix.lower() in FRONTEND_SUFFIXES
                       or any(p in FRONTEND_DIRS for p in parts[:-1])):
         return _decision(
-            "likely_false_positive",
-            "frontend_cannot_contain_idor",
-            "IDOR is a server-side authorization flaw. Client-side code cannot "
-            "enforce or omit ownership checks; the backend handler decides.",
-            claim_ruled_out="IDOR in client-side code",
+            "uncertain",
+            "frontend_idor_requires_backend_review",
+        (
+            "Client-side code cannot enforce server-side object authorization. "
+            "This candidate alone does not establish an IDOR, but the associated "
+            "backend endpoint must be reviewed before the issue can be dismissed."
+        ),
             followups=[{
                 "action": "audit_backend_handler",
                 "endpoints": sorted(set(API_PATH.findall(source))),
+                "required_checks": [
+                    "Identify the server-side route and handler.",
+                    "Trace the authenticated identity to a trusted server-side source.",
+                    "Verify ownership or access permissions for the requested object.",
+                    "Test that a different user's identity cannot access the object.",
+                ],
             }],
         )
 
@@ -468,16 +520,25 @@ def triage_candidate(candidate: dict, target: Path) -> dict | None:
             "not a vulnerability. Endpoint paths in front-end code are not secret.",
         )
 
+    
     facts = candidate_facts(candidate, target)
+
     if facts and facts["enforced_server_identity"]:
         return _decision(
-            "likely_false_positive",
-            "ownership_check_enforced",
-            "The function compares the record owner with an identity returned by a "
-            "same-module helper that rejects invalid input, and raises on mismatch. "
-            "A missing or ineffective owner comparison is ruled out.",
-            claim_ruled_out="missing or ineffective ownership comparison",
+            "uncertain",
+            "ownership_check_detected_review_required",
+            (
+                "A server-side identity source and ownership guard were detected "
+                "by static analysis. This heuristic does not prove that every "
+                "unauthorized request is rejected, so manual review is required."
+            ),
             facts=facts,
-            not_assessed=["Soundness of the identity helper (token validation) was not verified."],
+            claim_ruled_out=None,
+            not_assessed=[
+                "Complete control-flow enforcement of the ownership check.",
+                "Soundness of identity validation and authentication.",
+                "Whether every access path enforces authorization.",
+            ],
         )
+
     return None

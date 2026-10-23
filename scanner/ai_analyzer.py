@@ -25,6 +25,7 @@ VALIDATOR_PROMPT_VERSION = "2"
 TRIAGE_STATUS = {
     "likely_false_positive": "Likely false positive - ruled out by deterministic check",
     "informational": "Informational - not a security vulnerability",
+    "uncertain": "Uncertain - manual review required",
 }
 
 def load_json(path: Path) -> dict:
@@ -435,10 +436,25 @@ Facts computed deterministically from the code (treat as true):
 Rules:
 - "likely" only if the code shows request-controlled input reaching a sensitive
   operation AND a missing or ineffective control. Quote the operation in claim_evidence.
-- "unlikely" if the code shown contains a control that defeats the claim.
+- "unlikely" only if the shown code contains a control that defeats the claim.
   Quote that control in counter_evidence.
-- A check you can see must be judged on whether it is enforced (does it raise or
-  return before the sensitive operation?) and where the identity it uses comes from.
+- For IDOR, explicitly assess the ownership comparison, the branch condition,
+  whether the failure branch raises/returns/aborts, and whether execution can
+  continue to the sensitive operation after a failed check.
+- Trace the identity used in the ownership comparison. Do not assume a variable
+  is trustworthy merely because its name is "user".
+- If an enforced ownership guard is visible, do not claim it is bypassed unless
+  you identify a concrete bypass path supported by the supplied code.
+- A scanner warning or an earlier AI claim is not proof of a vulnerability.
+- If the ownership guard appears enforced but its full behavior is not proven,
+  use "uncertain".
+- If regression-test evidence is supplied, address it explicitly. A test showing
+  cross-user access succeeds supports the claim; a test showing access is denied
+  is counter-evidence. Do not ignore contradictory test results.
+- A model verdict must not override reproducible contrary evidence without
+  explaining a concrete reason that the test does not cover the claimed path.
+- A check you can see must be judged on whether it is enforced and where its
+  identity input comes from.
 - Browser/client-side code cannot contain server-side authorization flaws such as IDOR.
 - If the deciding code (auth helper, route handler, middleware) is not shown, use
   "uncertain" and list it in missing_context.
@@ -476,11 +492,35 @@ Source (line-numbered):
 
     claim_check = verify_citations(context, result.get("claim_evidence"))
     counter_check = verify_citations(context, result.get("counter_evidence"))
+
     final, note = verdict, None
+
     if verdict == "likely" and claim_check["verified"] == 0:
-        final, note = "uncertain", "Downgraded: no verifiable code citation supports the claim."
+        final, note = (
+            "uncertain",
+            "Downgraded: no verifiable code citation supports the claim.",
+        )
     elif verdict == "unlikely" and counter_check["verified"] == 0:
-        final, note = "uncertain", "Downgraded: no verifiable citation of a control that defeats the claim."
+        final, note = (
+            "uncertain",
+            "Downgraded: no verifiable citation of a control that defeats the claim.",
+        )
+
+    # An IDOR claim must not be accepted when the validator itself cites
+    # counter-evidence but still concludes that the vulnerability is likely.
+    if (
+        final == "likely"
+        and any(
+            word in str(candidate.get("category", "")).lower()
+            for word in ("idor", "access control", "authorization", "direct object")
+        )
+        and counter_check["verified"] > 0
+    ):
+        final, note = (
+            "uncertain",
+            "Downgraded: the validator cited counter-evidence to the IDOR claim. "
+            "Resolve the ownership-check conflict before classifying it as likely.",
+        )
 
     missing = result.get("missing_context")
     missing = [str(m)[:200] for m in missing[:5]] if isinstance(missing, list) else []
@@ -762,6 +802,9 @@ def analyze_report(report_path: Path) -> dict:
     results = []
 
     findings = report.get("findings", [])[:MAX_FINDINGS]
+    all_findings = report.get("findings", [])
+    findings = all_findings[:MAX_FINDINGS]
+    skipped_findings = all_findings[len(findings):]
 
     for index, finding in enumerate(findings, start=1):
         raw_path = Path(finding.get("file", ""))
@@ -867,6 +910,10 @@ def analyze_report(report_path: Path) -> dict:
         "results": results,
         "consolidated_findings": consolidated,
         "test_results": test_results,
+        "total_findings_discovered": len(all_findings),
+        "analyzed_count": len(results),
+        "skipped_count": len(skipped_findings),
+        "skipped_findings": skipped_findings,
         "summary": {
             "total_groups": len(consolidated),
             "likely_vulnerabilities": sum(
