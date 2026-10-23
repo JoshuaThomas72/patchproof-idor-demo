@@ -1,0 +1,31 @@
+{
+  "target": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo",
+  "model": "qwen3.5:4b",
+  "analyzed_count": 1,
+  "results": [
+    {
+      "finding": {
+        "source": "PatchProof-IDOR",
+        "category": "Potential IDOR",
+        "severity": "WARNING",
+        "confidence": "MEDIUM",
+        "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+        "line": 40,
+        "message": "Function 'get_document' may retrieve a document without an explicit ownership comparison. Manual review required."
+      },
+      "ai_analysis": {
+        "vulnerability_type": "IDOR",
+        "verdict": "likely",
+        "severity": "HIGH",
+        "explanation": "The endpoint retrieves documents without verifying if the requesting user owns them. A comment explicitly admits this check is missing.",
+        "evidence": "Line 52 states 'INTENTIONAL IDOR: missing document-owner authorization check' while returning document data regardless of ownership.",
+        "suggested_fix": "Add logic to compare the authenticated user's ID with the document's owner before returning data.",
+        "verification_tests": [
+          "Request a document owned by User B using User A's token.",
+          "Verify the server returns the document details without an ownership check.",
+          "Confirm the response includes the requested document's owner field."
+        ]
+      }
+    }
+  ]
+}

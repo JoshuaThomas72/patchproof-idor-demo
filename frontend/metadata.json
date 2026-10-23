@@ -1,0 +1,6 @@
+{
+  "name": "PatchProof — Security, made clear",
+  "description": "Autonomous code vulnerability detection, precision AI explanations, and verified test-backed remediation engineered for Python services in a premium Apple-inspired interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
