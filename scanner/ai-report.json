@@ -1,7 +1,73 @@
 {
   "target": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo",
   "model": "qwen3.5:4b",
-  "analyzed_count": 1,
+  "analyzed_count": 12,
+  "discovered_vulnerabilities": [
+    {
+      "source": "LLM-Discovery",
+      "file": "main.py",
+      "line": 47,
+      "category": "Broken Access Control (IDOR)",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence": "The code checks if the document exists and if the owner matches the user, but the comment explicitly states 'INTENTIONAL IDOR: missing document-owner authorization check.' The logic `if document['owner'] != user` is present but the comment indicates this check is ineffective or bypassable in the context of the demo's design.",
+      "message": "The application allows any authenticated user to access documents owned by others because the ownership verification is either redundant (as per the comment) or can be bypassed if the token validation does not strictly enforce scope. The comment suggests the check is missing or ineffective, allowing unauthorized users to retrieve sensitive data.",
+      "suggested_fix": "Remove the comment indicating intentional IDOR and ensure that the authorization header includes a scope claim (e.g., 'owner: alice') which is validated against the document's owner before returning content.",
+      "status": "Uncertain - manual review required",
+      "validation": {
+        "verdict": "uncertain",
+        "reason": "The code explicitly includes an ownership check (`if document['owner'] != user`) that raises a 404 error if the user does not own the document. While a comment labels this as 'INTENTIONAL IDOR', the presence of the actual validation logic contradicts the claim that the check is ineffective or missing; without knowing how the `signed_in_user` function validates tokens against scopes, we cannot confirm if the vulnerability exists."
+      }
+    },
+    {
+      "source": "LLM-Discovery",
+      "file": "main_vulnerable.py",
+      "line": 57,
+      "category": "Broken Access Control (IDOR)",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence": "The function retrieves a document by ID and returns its content without verifying if the authenticated user owns it. The comment explicitly states 'ownership is intentionally not checked yet.'",
+      "message": "Any authenticated user can access any document in the `DOCUMENTS` dictionary regardless of the owner field, violating the principle of least privilege.",
+      "suggested_fix": "Add a check to ensure `user == document['owner']` before returning the document content.",
+      "status": "Likely vulnerability - requires verification",
+      "validation": {
+        "verdict": "likely",
+        "reason": "The code explicitly implements a 'broken access control' pattern where the function returns document content without verifying if the requesting user owns it, as confirmed by the comment stating 'INTENTIONAL IDOR: missing document-owner authorization check.' This is a deliberate security flaw rather than an oversight or hypothetical scenario."
+      }
+    },
+    {
+      "source": "LLM-Discovery",
+      "file": "frontend/src/components/ScanUploadModal.tsx",
+      "line": 108,
+      "category": "Insecure Direct File Access (IDOR)",
+      "severity": "HIGH",
+      "confidence": "MEDIUM",
+      "evidence": "The code accepts a file object directly from the user's drop or input event (`const file = e.dataTransfer.files[0]`), sets it as `selectedFile`, and immediately uploads it to an internal API without verifying ownership or source.",
+      "message": "The application trusts the client-provided file entirely. There is no mechanism to verify that the user has permission to scan the specific file being uploaded, nor is there any validation of the file's origin before processing. This allows any user to upload arbitrary files (potentially containing malicious code or sensitive data) for scanning.",
+      "suggested_fix": "Implement server-side validation where the backend verifies the file's integrity and ownership before processing. Alternatively, restrict uploads to specific directories or require explicit authorization tokens associated with the file.",
+      "status": "Uncertain - manual review required",
+      "validation": {
+        "verdict": "uncertain",
+        "reason": "The provided code snippet shows the frontend constructing a FormData object and sending it to an internal API, but it does not include the actual upload logic or any client-side validation of file ownership. The vulnerability claim relies on the assumption that the backend lacks checks, which cannot be verified from this frontend-only context."
+      }
+    },
+    {
+      "source": "LLM-Discovery",
+      "file": "frontend/src/components/ScanUploadModal.tsx",
+      "line": 120,
+      "category": "Hardcoded Internal Endpoint",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence": "The `fetch` call uses a hardcoded internal address: `'http://127.0.0.1:8765/api/scan-zip'`.",
+      "message": "While this is likely intended for local development, hardcoding production endpoints in client-side code reduces flexibility and can lead to configuration drift if the application is deployed in environments where this address is invalid or unreachable. It also exposes the internal API structure to anyone inspecting the source.",
+      "suggested_fix": "Use an environment variable (e.g., `process.env.REACT_APP_SCAN_API_URL`) to configure the endpoint dynamically based on the deployment environment.",
+      "status": "Uncertain - manual review required",
+      "validation": {
+        "verdict": "uncertain",
+        "reason": "The hardcoded endpoint is present in client-side code, but the candidate's severity and confidence are based on assumptions about production deployment rather than evidence of a security risk. In many modern applications, internal endpoints are configured via environment variables at runtime or proxy through a gateway; the presence of a literal string does not confirm it is exposed to attackers or misconfigured in production without further context."
+      }
+    }
+  ],
   "results": [
     {
       "finding": {
@@ -26,6 +92,900 @@
           "Confirm the response includes the requested document's owner field."
         ]
       }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B404",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\pipeline.py",
+        "line": 3,
+        "message": "Consider possible security implications associated with the subprocess module.",
+        "code": "2 import json\n3 import subprocess\n4 import sys\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Subprocess Security",
+        "verdict": "uncertain",
+        "severity": "LOW",
+        "explanation": "The import statement alone does not confirm unsafe subprocess usage. No actual function calls or arguments are visible in the provided code context.",
+        "evidence": "Only `import subprocess` is present at line 3 without any usage examples like `subprocess.run()` or `Popen()`. The finding text is generic and applies to many valid use cases.",
+        "suggested_fix": "Review all subsequent calls to the `subprocess` module to ensure they use `shell=False` and avoid passing shell commands as strings.",
+        "verification_tests": [
+          "Search for all `subprocess.run()` or `Popen()` calls in the file.",
+          "Verify if any call passes a string argument with `shell=True`.",
+          "Check if arguments are passed as lists instead of single strings."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B603",
+        "category": "Process / Command Security",
+        "cwe": "CWE-78",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\pipeline.py",
+        "line": 28,
+        "message": "subprocess call - check for execution of untrusted input.",
+        "code": "27     print(\"\\n[3/4] Running regression tests...\")\n28     test_result = subprocess.run(\n29         [\n30             sys.executable,\n31             \"-m\",\n32             \"pytest\",\n33             \"tests/test_idor.py\",\n34             \"-v\",\n35             \"--tb=short\",\n36         ],\n37         cwd=PROJECT_ROOT,\n38         capture_output=True,\n39         text=True,\n40         timeout=120,\n41     )\n42 \n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Command Injection",
+        "verdict": "unlikely",
+        "severity": "LOW",
+        "explanation": "The code uses a hardcoded list of arguments for subprocess.run, preventing injection via the first argument. No user input is visible in this specific function call.",
+        "evidence": "Arguments are passed as a static list containing sys.executable and pytest flags; no variables or external inputs are interpolated into the command list.",
+        "suggested_fix": "Ensure all arguments passed to subprocess.run are validated against an allowlist if they ever become dynamic.",
+        "verification_tests": [
+          "Verify that user input cannot be injected into the first argument of subprocess.run.",
+          "Confirm that no variables from external sources are used in the command list.",
+          "Check if any other functions in the file accept untrusted input for subprocess calls."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B404",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\test_runner.py",
+        "line": 3,
+        "message": "Consider possible security implications associated with the subprocess module.",
+        "code": "2 import json\n3 import subprocess\n4 import sys\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Subprocess Injection Risk",
+        "verdict": "uncertain",
+        "severity": "LOW",
+        "explanation": "The code imports subprocess but does not use it in the provided snippet. The finding is a generic warning about potential misuse, not a confirmed issue.",
+        "evidence": "No actual subprocess call (e.g., Popen or run) exists in the visible source code lines 1-18.",
+        "suggested_fix": "Review all uses of subprocess to ensure arguments are hardcoded and user input is never passed directly as command strings.",
+        "verification_tests": [
+          "Search for 'subprocess' usage across the entire project.",
+          "Verify no user-controlled variables are concatenated into subprocess commands.",
+          "Check if any subprocess calls use shell=True."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B603",
+        "category": "Process / Command Security",
+        "cwe": "CWE-78",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\test_runner.py",
+        "line": 21,
+        "message": "subprocess call - check for execution of untrusted input.",
+        "code": "20 \n21     result = subprocess.run(\n22         command,\n23         cwd=ROOT,\n24         capture_output=True,\n25         text=True,\n26         timeout=120,\n27     )\n28 \n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Command Injection",
+        "verdict": "unlikely",
+        "severity": "LOW",
+        "explanation": "The code constructs a command list explicitly using hardcoded strings rather than user input. No external data is interpolated into the subprocess arguments.",
+        "evidence": "The 'command' variable is defined as a fixed list of Python and pytest module names with no f-strings or string concatenation involving untrusted variables.",
+        "suggested_fix": "No fix required; the code safely avoids command injection by using argument lists instead of shell strings.",
+        "verification_tests": [
+          "Verify 'command' contains only hardcoded strings.",
+          "Confirm no user input is passed to subprocess.run().",
+          "Ensure the code does not use shell=True."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B404",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\unified_scanner.py",
+        "line": 3,
+        "message": "Consider possible security implications associated with the subprocess module.",
+        "code": "2 import json\n3 import subprocess\n4 import sys\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Potential Subprocess Security Risk",
+        "verdict": "uncertain",
+        "severity": "LOW",
+        "explanation": "The code imports the subprocess module but does not demonstrate its usage in this snippet. Without seeing how it is called, no specific vulnerability can be confirmed.",
+        "evidence": "Only an import statement for 'subprocess' is present; no function calls or arguments are visible to assess command injection risks.",
+        "suggested_fix": "Review all subprocess usages in the project to ensure they use shell=False and avoid passing untrusted input directly as arguments.",
+        "verification_tests": [
+          "Search for all subprocess.Popen, run, or call invocations in the codebase.",
+          "Verify that no user-controlled data is passed as command arguments without sanitization.",
+          "Check if any subprocess calls use shell=True with external inputs."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B603",
+        "category": "Process / Command Security",
+        "cwe": "CWE-78",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\unified_scanner.py",
+        "line": 61,
+        "message": "subprocess call - check for execution of untrusted input.",
+        "code": "60     try:\n61         result = subprocess.run(\n62             [\n63                 sys.executable, \"-m\", \"bandit\",\n64                 \"-r\", str(project_path),\n65                 \"-x\", excluded,\n66                 \"-f\", \"json\",\n67             ],\n68             capture_output=True,\n69             text=True,\n70             timeout=120,\n71         )\n72     except (subprocess.TimeoutExpired, OSError) as exc:\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Command Injection",
+        "verdict": "likely",
+        "severity": "MEDIUM",
+        "explanation": "The code passes `project_path` and `excluded` directly into a subprocess command without sanitization. If these variables contain special shell characters, they could alter the command execution.",
+        "evidence": "Lines 63-67 construct a list where `str(project_path)` and `excluded` are interpolated into arguments for `subprocess.run`. The `bandit` tool itself is invoked via `sys.executable`, but user-controlled inputs remain unvalidated.",
+        "suggested_fix": "Validate `project_path` to ensure it is an absolute path within a trusted directory tree before passing it to the subprocess.",
+        "verification_tests": [
+          "Attempt to pass a path containing shell metacharacters (e.g., '; rm -rf /') as project_path.",
+          "Verify that the subprocess executes only the intended `bandit` command without additional injected operations.",
+          "Confirm that the application rejects or safely handles invalid directory paths."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_idor.py",
+        "line": 26,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "25     if alice_can_read_bobs_document:\n26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "False Positive",
+        "verdict": "unlikely",
+        "severity": "LOW",
+        "explanation": "The finding reports an assertion usage, which is a standard testing practice and not a security flaw. Assertions are removed during optimization but do not indicate exploitable logic errors in production code.",
+        "evidence": "The code contains `assert` statements within a test function (`test_document_ownership`) to validate expected behavior under specific conditions.",
+        "suggested_fix": "Ignore the finding as it pertains to test assertions, not application logic vulnerabilities.",
+        "verification_tests": [
+          "Confirm the code is located inside a test file and function.",
+          "Verify that `assert` statements are used for conditional validation in tests.",
+          "Check if the same logic exists without assertions in production code."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_idor.py",
+        "line": 27,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n28     else:\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "False Positive",
+        "verdict": "unlikely",
+        "severity": "LOW",
+        "explanation": "The finding is a test assertion, not application logic. Assertions are removed during optimization and do not affect runtime security.",
+        "evidence": "Code at line 27 uses Python's assert keyword for testing expectations, which is stripped in optimized bytecode.",
+        "suggested_fix": "Ignore the Bandit warning; assertions in tests are safe and intended for verification.",
+        "verification_tests": [
+          "Run pytest to confirm test assertions execute correctly.",
+          "Compile with optimization enabled (e.g., -O) and verify assert statements disappear from bytecode.",
+          "Confirm no runtime errors occur when assertions are removed."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_idor.py",
+        "line": 29,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "28     else:\n29         assert response.status_code == 404\n30 \n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "False Positive / Misclassification",
+        "verdict": "uncertain",
+        "severity": "LOW",
+        "explanation": "The finding claims an assertion vulnerability, but assertions in tests are not security flaws. The code is a test file, not production logic.",
+        "evidence": "The source code is from 'tests\\test_idor.py', containing `assert` statements used for conditional test expectations rather than runtime validation.",
+        "suggested_fix": "Ignore the finding as it misclassifies test assertions as a security issue.",
+        "verification_tests": [
+          "Confirm the file path indicates a test suite.",
+          "Verify if assertions are used for expected outcomes in this context.",
+          "Check if production code exists elsewhere using similar logic."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_idor.py",
+        "line": 40,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "39 \n40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "False Positive / Misclassification",
+        "verdict": "uncertain",
+        "severity": "LOW",
+        "explanation": "The finding claims a security issue based on the use of `assert` statements, which is a common testing pattern. However, `assert` is not inherently a vulnerability unless used to bypass input validation in production code.",
+        "evidence": "The provided source code is from a test file (`test_idor.py`) and contains explicit assertions for expected HTTP status codes and JSON responses during automated testing.",
+        "suggested_fix": "Ignore the finding as it likely represents a false positive or a misunderstanding of `assert` usage in test suites. If this code runs in production, ensure assertions are not used for critical security checks.",
+        "verification_tests": [
+          "Check if the file is executed outside of pytest/test frameworks.",
+          "Verify if `assert` statements are replaced with explicit `if` conditions in production builds.",
+          "Confirm that no input validation logic relies solely on `assert` statements."
+        ]
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_idor.py",
+        "line": 41,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+      },
+      "ai_analysis": {
+        "vulnerability_type": "False Positive",
+        "verdict": "unlikely",
+        "severity": "LOW",
+        "explanation": "The finding is a false positive from the Bandit scanner regarding assert statements in test code. Asserts are standard for verifying logic during unit tests and do not expose secrets or cause vulnerabilities in production. The context confirms this is a test file.",
+        "evidence": "Source code contains `assert` statements within a function named `test_owner_can_read_own_document`, indicating it is a test case, not production logic.",
+        "suggested_fix": "Ignore the Bandit warning for assert statements in test files; no code change required.",
+        "verification_tests": [
+          "Confirm the file path matches a test directory or contains 'test_' prefix.",
+          "Verify the function name starts with 'test_'.",
+          "Ensure the code is executed only during testing, not in production deployment."
+        ]
+      }
     }
-  ]
+  ],
+  "consolidated_findings": [
+    {
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+      "line": 40,
+      "severity": "HIGH",
+      "sources": [
+        "LLM-Discovery",
+        "PatchProof-IDOR"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "PatchProof-IDOR",
+            "category": "Potential IDOR",
+            "severity": "WARNING",
+            "confidence": "MEDIUM",
+            "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+            "line": 40,
+            "message": "Function 'get_document' may retrieve a document without an explicit ownership comparison. Manual review required."
+          },
+          "ai_analysis": {
+            "vulnerability_type": "IDOR",
+            "verdict": "likely",
+            "severity": "HIGH",
+            "explanation": "The endpoint retrieves documents without verifying if the requesting user owns them. A comment explicitly admits this check is missing.",
+            "evidence": "Line 52 states 'INTENTIONAL IDOR: missing document-owner authorization check' while returning document data regardless of ownership.",
+            "suggested_fix": "Add logic to compare the authenticated user's ID with the document's owner before returning data.",
+            "verification_tests": [
+              "Request a document owned by User B using User A's token.",
+              "Verify the server returns the document details without an ownership check.",
+              "Confirm the response includes the requested document's owner field."
+            ]
+          }
+        },
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "file": "main_vulnerable.py",
+          "line": 57,
+          "category": "Broken Access Control (IDOR)",
+          "severity": "HIGH",
+          "confidence": "HIGH",
+          "evidence": "The function retrieves a document by ID and returns its content without verifying if the authenticated user owns it. The comment explicitly states 'ownership is intentionally not checked yet.'",
+          "message": "Any authenticated user can access any document in the `DOCUMENTS` dictionary regardless of the owner field, violating the principle of least privilege.",
+          "suggested_fix": "Add a check to ensure `user == document['owner']` before returning the document content.",
+          "status": "Likely vulnerability - requires verification",
+          "validation": {
+            "verdict": "likely",
+            "reason": "The code explicitly implements a 'broken access control' pattern where the function returns document content without verifying if the requesting user owns it, as confirmed by the comment stating 'INTENTIONAL IDOR: missing document-owner authorization check.' This is a deliberate security flaw rather than an oversight or hypothetical scenario."
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 2,
+        "likely_false_positive": 0,
+        "uncertain": 0
+      },
+      "classification": "likely_vulnerability",
+      "duplicate_count": 2
+    },
+    {
+      "file": "scanner\\pipeline.py",
+      "line": 3,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B404",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\pipeline.py",
+            "line": 3,
+            "message": "Consider possible security implications associated with the subprocess module.",
+            "code": "2 import json\n3 import subprocess\n4 import sys\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Subprocess Security",
+            "verdict": "uncertain",
+            "severity": "LOW",
+            "explanation": "The import statement alone does not confirm unsafe subprocess usage. No actual function calls or arguments are visible in the provided code context.",
+            "evidence": "Only `import subprocess` is present at line 3 without any usage examples like `subprocess.run()` or `Popen()`. The finding text is generic and applies to many valid use cases.",
+            "suggested_fix": "Review all subsequent calls to the `subprocess` module to ensure they use `shell=False` and avoid passing shell commands as strings.",
+            "verification_tests": [
+              "Search for all `subprocess.run()` or `Popen()` calls in the file.",
+              "Verify if any call passes a string argument with `shell=True`.",
+              "Check if arguments are passed as lists instead of single strings."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1
+      },
+      "classification": "uncertain",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\pipeline.py",
+      "line": 28,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B603",
+            "category": "Process / Command Security",
+            "cwe": "CWE-78",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\pipeline.py",
+            "line": 28,
+            "message": "subprocess call - check for execution of untrusted input.",
+            "code": "27     print(\"\\n[3/4] Running regression tests...\")\n28     test_result = subprocess.run(\n29         [\n30             sys.executable,\n31             \"-m\",\n32             \"pytest\",\n33             \"tests/test_idor.py\",\n34             \"-v\",\n35             \"--tb=short\",\n36         ],\n37         cwd=PROJECT_ROOT,\n38         capture_output=True,\n39         text=True,\n40         timeout=120,\n41     )\n42 \n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Command Injection",
+            "verdict": "unlikely",
+            "severity": "LOW",
+            "explanation": "The code uses a hardcoded list of arguments for subprocess.run, preventing injection via the first argument. No user input is visible in this specific function call.",
+            "evidence": "Arguments are passed as a static list containing sys.executable and pytest flags; no variables or external inputs are interpolated into the command list.",
+            "suggested_fix": "Ensure all arguments passed to subprocess.run are validated against an allowlist if they ever become dynamic.",
+            "verification_tests": [
+              "Verify that user input cannot be injected into the first argument of subprocess.run.",
+              "Confirm that no variables from external sources are used in the command list.",
+              "Check if any other functions in the file accept untrusted input for subprocess calls."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 1,
+        "uncertain": 0
+      },
+      "classification": "likely_false_positive",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\test_runner.py",
+      "line": 3,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B404",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\test_runner.py",
+            "line": 3,
+            "message": "Consider possible security implications associated with the subprocess module.",
+            "code": "2 import json\n3 import subprocess\n4 import sys\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Subprocess Injection Risk",
+            "verdict": "uncertain",
+            "severity": "LOW",
+            "explanation": "The code imports subprocess but does not use it in the provided snippet. The finding is a generic warning about potential misuse, not a confirmed issue.",
+            "evidence": "No actual subprocess call (e.g., Popen or run) exists in the visible source code lines 1-18.",
+            "suggested_fix": "Review all uses of subprocess to ensure arguments are hardcoded and user input is never passed directly as command strings.",
+            "verification_tests": [
+              "Search for 'subprocess' usage across the entire project.",
+              "Verify no user-controlled variables are concatenated into subprocess commands.",
+              "Check if any subprocess calls use shell=True."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1
+      },
+      "classification": "uncertain",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\test_runner.py",
+      "line": 21,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B603",
+            "category": "Process / Command Security",
+            "cwe": "CWE-78",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\test_runner.py",
+            "line": 21,
+            "message": "subprocess call - check for execution of untrusted input.",
+            "code": "20 \n21     result = subprocess.run(\n22         command,\n23         cwd=ROOT,\n24         capture_output=True,\n25         text=True,\n26         timeout=120,\n27     )\n28 \n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Command Injection",
+            "verdict": "unlikely",
+            "severity": "LOW",
+            "explanation": "The code constructs a command list explicitly using hardcoded strings rather than user input. No external data is interpolated into the subprocess arguments.",
+            "evidence": "The 'command' variable is defined as a fixed list of Python and pytest module names with no f-strings or string concatenation involving untrusted variables.",
+            "suggested_fix": "No fix required; the code safely avoids command injection by using argument lists instead of shell strings.",
+            "verification_tests": [
+              "Verify 'command' contains only hardcoded strings.",
+              "Confirm no user input is passed to subprocess.run().",
+              "Ensure the code does not use shell=True."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 1,
+        "uncertain": 0
+      },
+      "classification": "likely_false_positive",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\unified_scanner.py",
+      "line": 3,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B404",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\unified_scanner.py",
+            "line": 3,
+            "message": "Consider possible security implications associated with the subprocess module.",
+            "code": "2 import json\n3 import subprocess\n4 import sys\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Potential Subprocess Security Risk",
+            "verdict": "uncertain",
+            "severity": "LOW",
+            "explanation": "The code imports the subprocess module but does not demonstrate its usage in this snippet. Without seeing how it is called, no specific vulnerability can be confirmed.",
+            "evidence": "Only an import statement for 'subprocess' is present; no function calls or arguments are visible to assess command injection risks.",
+            "suggested_fix": "Review all subprocess usages in the project to ensure they use shell=False and avoid passing untrusted input directly as arguments.",
+            "verification_tests": [
+              "Search for all subprocess.Popen, run, or call invocations in the codebase.",
+              "Verify that no user-controlled data is passed as command arguments without sanitization.",
+              "Check if any subprocess calls use shell=True with external inputs."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1
+      },
+      "classification": "uncertain",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\unified_scanner.py",
+      "line": 61,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B603",
+            "category": "Process / Command Security",
+            "cwe": "CWE-78",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\unified_scanner.py",
+            "line": 61,
+            "message": "subprocess call - check for execution of untrusted input.",
+            "code": "60     try:\n61         result = subprocess.run(\n62             [\n63                 sys.executable, \"-m\", \"bandit\",\n64                 \"-r\", str(project_path),\n65                 \"-x\", excluded,\n66                 \"-f\", \"json\",\n67             ],\n68             capture_output=True,\n69             text=True,\n70             timeout=120,\n71         )\n72     except (subprocess.TimeoutExpired, OSError) as exc:\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Command Injection",
+            "verdict": "likely",
+            "severity": "MEDIUM",
+            "explanation": "The code passes `project_path` and `excluded` directly into a subprocess command without sanitization. If these variables contain special shell characters, they could alter the command execution.",
+            "evidence": "Lines 63-67 construct a list where `str(project_path)` and `excluded` are interpolated into arguments for `subprocess.run`. The `bandit` tool itself is invoked via `sys.executable`, but user-controlled inputs remain unvalidated.",
+            "suggested_fix": "Validate `project_path` to ensure it is an absolute path within a trusted directory tree before passing it to the subprocess.",
+            "verification_tests": [
+              "Attempt to pass a path containing shell metacharacters (e.g., '; rm -rf /') as project_path.",
+              "Verify that the subprocess executes only the intended `bandit` command without additional injected operations.",
+              "Confirm that the application rejects or safely handles invalid directory paths."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 1,
+        "likely_false_positive": 0,
+        "uncertain": 0
+      },
+      "classification": "likely_vulnerability",
+      "duplicate_count": 1
+    },
+    {
+      "file": "tests\\test_idor.py",
+      "line": 26,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_idor.py",
+            "line": 26,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "25     if alice_can_read_bobs_document:\n26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "False Positive",
+            "verdict": "unlikely",
+            "severity": "LOW",
+            "explanation": "The finding reports an assertion usage, which is a standard testing practice and not a security flaw. Assertions are removed during optimization but do not indicate exploitable logic errors in production code.",
+            "evidence": "The code contains `assert` statements within a test function (`test_document_ownership`) to validate expected behavior under specific conditions.",
+            "suggested_fix": "Ignore the finding as it pertains to test assertions, not application logic vulnerabilities.",
+            "verification_tests": [
+              "Confirm the code is located inside a test file and function.",
+              "Verify that `assert` statements are used for conditional validation in tests.",
+              "Check if the same logic exists without assertions in production code."
+            ]
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_idor.py",
+            "line": 27,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n28     else:\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "False Positive",
+            "verdict": "unlikely",
+            "severity": "LOW",
+            "explanation": "The finding is a test assertion, not application logic. Assertions are removed during optimization and do not affect runtime security.",
+            "evidence": "Code at line 27 uses Python's assert keyword for testing expectations, which is stripped in optimized bytecode.",
+            "suggested_fix": "Ignore the Bandit warning; assertions in tests are safe and intended for verification.",
+            "verification_tests": [
+              "Run pytest to confirm test assertions execute correctly.",
+              "Compile with optimization enabled (e.g., -O) and verify assert statements disappear from bytecode.",
+              "Confirm no runtime errors occur when assertions are removed."
+            ]
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_idor.py",
+            "line": 29,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "28     else:\n29         assert response.status_code == 404\n30 \n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "False Positive / Misclassification",
+            "verdict": "uncertain",
+            "severity": "LOW",
+            "explanation": "The finding claims an assertion vulnerability, but assertions in tests are not security flaws. The code is a test file, not production logic.",
+            "evidence": "The source code is from 'tests\\test_idor.py', containing `assert` statements used for conditional test expectations rather than runtime validation.",
+            "suggested_fix": "Ignore the finding as it misclassifies test assertions as a security issue.",
+            "verification_tests": [
+              "Confirm the file path indicates a test suite.",
+              "Verify if assertions are used for expected outcomes in this context.",
+              "Check if production code exists elsewhere using similar logic."
+            ]
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_idor.py",
+            "line": 40,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "39 \n40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "False Positive / Misclassification",
+            "verdict": "uncertain",
+            "severity": "LOW",
+            "explanation": "The finding claims a security issue based on the use of `assert` statements, which is a common testing pattern. However, `assert` is not inherently a vulnerability unless used to bypass input validation in production code.",
+            "evidence": "The provided source code is from a test file (`test_idor.py`) and contains explicit assertions for expected HTTP status codes and JSON responses during automated testing.",
+            "suggested_fix": "Ignore the finding as it likely represents a false positive or a misunderstanding of `assert` usage in test suites. If this code runs in production, ensure assertions are not used for critical security checks.",
+            "verification_tests": [
+              "Check if the file is executed outside of pytest/test frameworks.",
+              "Verify if `assert` statements are replaced with explicit `if` conditions in production builds.",
+              "Confirm that no input validation logic relies solely on `assert` statements."
+            ]
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_idor.py",
+            "line": 41,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+          },
+          "ai_analysis": {
+            "vulnerability_type": "False Positive",
+            "verdict": "unlikely",
+            "severity": "LOW",
+            "explanation": "The finding is a false positive from the Bandit scanner regarding assert statements in test code. Asserts are standard for verifying logic during unit tests and do not expose secrets or cause vulnerabilities in production. The context confirms this is a test file.",
+            "evidence": "Source code contains `assert` statements within a function named `test_owner_can_read_own_document`, indicating it is a test case, not production logic.",
+            "suggested_fix": "Ignore the Bandit warning for assert statements in test files; no code change required.",
+            "verification_tests": [
+              "Confirm the file path matches a test directory or contains 'test_' prefix.",
+              "Verify the function name starts with 'test_'.",
+              "Ensure the code is executed only during testing, not in production deployment."
+            ]
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 3,
+        "uncertain": 2
+      },
+      "classification": "uncertain",
+      "duplicate_count": 5
+    },
+    {
+      "file": "main.py",
+      "line": 47,
+      "severity": "HIGH",
+      "sources": [
+        "LLM-Discovery"
+      ],
+      "original_records": [
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "file": "main.py",
+          "line": 47,
+          "category": "Broken Access Control (IDOR)",
+          "severity": "HIGH",
+          "confidence": "HIGH",
+          "evidence": "The code checks if the document exists and if the owner matches the user, but the comment explicitly states 'INTENTIONAL IDOR: missing document-owner authorization check.' The logic `if document['owner'] != user` is present but the comment indicates this check is ineffective or bypassable in the context of the demo's design.",
+          "message": "The application allows any authenticated user to access documents owned by others because the ownership verification is either redundant (as per the comment) or can be bypassed if the token validation does not strictly enforce scope. The comment suggests the check is missing or ineffective, allowing unauthorized users to retrieve sensitive data.",
+          "suggested_fix": "Remove the comment indicating intentional IDOR and ensure that the authorization header includes a scope claim (e.g., 'owner: alice') which is validated against the document's owner before returning content.",
+          "status": "Uncertain - manual review required",
+          "validation": {
+            "verdict": "uncertain",
+            "reason": "The code explicitly includes an ownership check (`if document['owner'] != user`) that raises a 404 error if the user does not own the document. While a comment labels this as 'INTENTIONAL IDOR', the presence of the actual validation logic contradicts the claim that the check is ineffective or missing; without knowing how the `signed_in_user` function validates tokens against scopes, we cannot confirm if the vulnerability exists."
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1
+      },
+      "classification": "uncertain",
+      "duplicate_count": 1
+    },
+    {
+      "file": "frontend/src/components/ScanUploadModal.tsx",
+      "line": 108,
+      "severity": "HIGH",
+      "sources": [
+        "LLM-Discovery"
+      ],
+      "original_records": [
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "file": "frontend/src/components/ScanUploadModal.tsx",
+          "line": 108,
+          "category": "Insecure Direct File Access (IDOR)",
+          "severity": "HIGH",
+          "confidence": "MEDIUM",
+          "evidence": "The code accepts a file object directly from the user's drop or input event (`const file = e.dataTransfer.files[0]`), sets it as `selectedFile`, and immediately uploads it to an internal API without verifying ownership or source.",
+          "message": "The application trusts the client-provided file entirely. There is no mechanism to verify that the user has permission to scan the specific file being uploaded, nor is there any validation of the file's origin before processing. This allows any user to upload arbitrary files (potentially containing malicious code or sensitive data) for scanning.",
+          "suggested_fix": "Implement server-side validation where the backend verifies the file's integrity and ownership before processing. Alternatively, restrict uploads to specific directories or require explicit authorization tokens associated with the file.",
+          "status": "Uncertain - manual review required",
+          "validation": {
+            "verdict": "uncertain",
+            "reason": "The provided code snippet shows the frontend constructing a FormData object and sending it to an internal API, but it does not include the actual upload logic or any client-side validation of file ownership. The vulnerability claim relies on the assumption that the backend lacks checks, which cannot be verified from this frontend-only context."
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1
+      },
+      "classification": "uncertain",
+      "duplicate_count": 1
+    },
+    {
+      "file": "frontend/src/components/ScanUploadModal.tsx",
+      "line": 120,
+      "severity": "MEDIUM",
+      "sources": [
+        "LLM-Discovery"
+      ],
+      "original_records": [
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "file": "frontend/src/components/ScanUploadModal.tsx",
+          "line": 120,
+          "category": "Hardcoded Internal Endpoint",
+          "severity": "MEDIUM",
+          "confidence": "HIGH",
+          "evidence": "The `fetch` call uses a hardcoded internal address: `'http://127.0.0.1:8765/api/scan-zip'`.",
+          "message": "While this is likely intended for local development, hardcoding production endpoints in client-side code reduces flexibility and can lead to configuration drift if the application is deployed in environments where this address is invalid or unreachable. It also exposes the internal API structure to anyone inspecting the source.",
+          "suggested_fix": "Use an environment variable (e.g., `process.env.REACT_APP_SCAN_API_URL`) to configure the endpoint dynamically based on the deployment environment.",
+          "status": "Uncertain - manual review required",
+          "validation": {
+            "verdict": "uncertain",
+            "reason": "The hardcoded endpoint is present in client-side code, but the candidate's severity and confidence are based on assumptions about production deployment rather than evidence of a security risk. In many modern applications, internal endpoints are configured via environment variables at runtime or proxy through a gateway; the presence of a literal string does not confirm it is exposed to attackers or misconfigured in production without further context."
+          }
+        }
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1
+      },
+      "classification": "uncertain",
+      "duplicate_count": 1
+    }
+  ],
+  "summary": {
+    "total_groups": 11,
+    "likely_vulnerabilities": 2,
+    "uncertain": 7,
+    "likely_false_positives": 2
+  }
 }

@@ -1,17 +1,154 @@
 {
-  "target": "C:\\Users\\Ryan\\AppData\\Local\\Temp\\patchproof-9cogy2ps\\project",
-  "total_findings": 1,
+  "target": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo",
+  "total_findings": 12,
   "findings": [
     {
       "source": "PatchProof-IDOR",
       "category": "Potential IDOR",
       "severity": "WARNING",
       "confidence": "MEDIUM",
-      "file": "C:\\Users\\Ryan\\AppData\\Local\\Temp\\patchproof-9cogy2ps\\project\\main_vulnerable.py",
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
       "line": 40,
       "message": "Function 'get_document' may retrieve a document without an explicit ownership comparison. Manual review required."
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B404",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "scanner\\pipeline.py",
+      "line": 3,
+      "message": "Consider possible security implications associated with the subprocess module.",
+      "code": "2 import json\n3 import subprocess\n4 import sys\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B603",
+      "category": "Process / Command Security",
+      "cwe": "CWE-78",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "scanner\\pipeline.py",
+      "line": 28,
+      "message": "subprocess call - check for execution of untrusted input.",
+      "code": "27     print(\"\\n[3/4] Running regression tests...\")\n28     test_result = subprocess.run(\n29         [\n30             sys.executable,\n31             \"-m\",\n32             \"pytest\",\n33             \"tests/test_idor.py\",\n34             \"-v\",\n35             \"--tb=short\",\n36         ],\n37         cwd=PROJECT_ROOT,\n38         capture_output=True,\n39         text=True,\n40         timeout=120,\n41     )\n42 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B404",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "scanner\\test_runner.py",
+      "line": 3,
+      "message": "Consider possible security implications associated with the subprocess module.",
+      "code": "2 import json\n3 import subprocess\n4 import sys\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B603",
+      "category": "Process / Command Security",
+      "cwe": "CWE-78",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "scanner\\test_runner.py",
+      "line": 21,
+      "message": "subprocess call - check for execution of untrusted input.",
+      "code": "20 \n21     result = subprocess.run(\n22         command,\n23         cwd=ROOT,\n24         capture_output=True,\n25         text=True,\n26         timeout=120,\n27     )\n28 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B404",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "scanner\\unified_scanner.py",
+      "line": 3,
+      "message": "Consider possible security implications associated with the subprocess module.",
+      "code": "2 import json\n3 import subprocess\n4 import sys\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B603",
+      "category": "Process / Command Security",
+      "cwe": "CWE-78",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "scanner\\unified_scanner.py",
+      "line": 61,
+      "message": "subprocess call - check for execution of untrusted input.",
+      "code": "60     try:\n61         result = subprocess.run(\n62             [\n63                 sys.executable, \"-m\", \"bandit\",\n64                 \"-r\", str(project_path),\n65                 \"-x\", excluded,\n66                 \"-f\", \"json\",\n67             ],\n68             capture_output=True,\n69             text=True,\n70             timeout=120,\n71         )\n72     except (subprocess.TimeoutExpired, OSError) as exc:\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 26,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "25     if alice_can_read_bobs_document:\n26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 27,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n28     else:\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 29,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "28     else:\n29         assert response.status_code == 404\n30 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 40,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "39 \n40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 41,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
     }
   ],
-  "test_verification": null,
+  "test_verification": {
+    "test_file": "tests/test_idor.py",
+    "passed": true,
+    "exit_code": 0,
+    "output": "============================= test session starts =============================\nplatform win32 -- Python 3.14.0, pytest-9.1.1, pluggy-1.7.0 -- C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\.venv\\Scripts\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\nplugins: anyio-4.15.1\ncollecting ... collected 3 items\n\ntests/test_idor.py::test_document_ownership[main_vulnerable-True] PASSED [ 33%]\ntests/test_idor.py::test_document_ownership[main-False] PASSED           [ 66%]\ntests/test_idor.py::test_owner_can_read_own_document PASSED              [100%]\n\n============================== 3 passed in 0.87s ==============================\n\n"
+  },
   "errors": []
 }
