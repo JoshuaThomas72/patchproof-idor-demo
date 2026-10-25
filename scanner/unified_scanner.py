@@ -111,7 +111,7 @@ def run_bandit(project_path: Path) -> dict:
     return {"findings": findings, "error": None}
 
 
-def scan(project_path: str) -> dict:
+def scan(project_path: str, output_path: str | Path | None = None) -> dict:
     root = Path(project_path).resolve()
 
     # Run the custom IDOR scanner.
@@ -158,7 +158,12 @@ def scan(project_path: str) -> dict:
         ),
     }
 
-    output_file = Path(__file__).with_name("report.json")
+    output_file = (
+        Path(output_path).resolve()
+        if output_path is not None
+        else Path(__file__).with_name("report.json")
+    )
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(
         json.dumps(report, indent=2),
         encoding="utf-8",

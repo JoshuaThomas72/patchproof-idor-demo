@@ -12,8 +12,7 @@ import {
   Copy, 
   Check, 
   ArrowRight,
-  ExternalLink,
-  Loader2
+  ExternalLink
 } from 'lucide-react';
 import { SecurityFinding } from '../types';
 import { downloadDiffFile } from '../utils/sarifExport';
@@ -33,7 +32,6 @@ export const FindingDetailModal: React.FC<FindingDetailModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'evidence' | 'ai' | 'fix' | 'test'>('evidence');
   const [copied, setCopied] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
 
   if (!finding) return null;
 
@@ -44,11 +42,7 @@ export const FindingDetailModal: React.FC<FindingDetailModalProps> = ({
   };
 
   const handleRunVerification = () => {
-    setIsVerifying(true);
-    setTimeout(() => {
-      onRunTestVerification(finding.id);
-      setIsVerifying(false);
-    }, 1200);
+    onRunTestVerification(finding.id);
   };
 
   const handleDownloadPatch = () => {
@@ -338,21 +332,17 @@ export const FindingDetailModal: React.FC<FindingDetailModalProps> = ({
                     Adversarial Pytest Security Suite
                   </h3>
                   <p className="text-[11px] text-[#86868b]">
-                    Automatically generated test ensuring the vulnerability is blocked
+Tests have not been executed for this uploaded project. A real verification backend is not connected yet.
                   </p>
                 </div>
 
                 <button
                   onClick={handleRunVerification}
-                  disabled={isVerifying}
+                  
                   className="inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-[#0077ed] active:scale-[0.98] disabled:opacity-50"
                 >
-                  {isVerifying ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Play className="h-3.5 w-3.5 fill-current" />
-                  )}
-                  <span>{isVerifying ? 'Running Pytest...' : 'Re-run Verification'}</span>
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                  <span>Request Verification (not connected)</span>
                 </button>
               </div>
 
@@ -425,7 +415,7 @@ export const FindingDetailModal: React.FC<FindingDetailModalProps> = ({
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#34c759] px-5 py-2 text-xs font-medium text-white shadow-sm hover:bg-[#30b753] active:scale-[0.98] transition-all"
               >
                 <CheckCircle2 className="h-4 w-4" />
-                <span>Apply Remediation & Mark Fixed</span>
+                <span>Apply Remediation (not connected)</span>
               </button>
             ) : (
               <button

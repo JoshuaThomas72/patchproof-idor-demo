@@ -20,6 +20,7 @@ interface FindingsTableProps {
   onSelectFinding: (finding: SecurityFinding) => void;
   selectedFindingId?: string;
   onExportSarif: () => void;
+  isLiveData?: boolean;
 }
 
 export const FindingsTable: React.FC<FindingsTableProps> = ({
@@ -27,6 +28,7 @@ export const FindingsTable: React.FC<FindingsTableProps> = ({
   onSelectFinding,
   selectedFindingId,
   onExportSarif,
+  isLiveData = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('All');
@@ -119,6 +121,30 @@ export const FindingsTable: React.FC<FindingsTableProps> = ({
             <span>Pytest Failing</span>
           </span>
         );
+      case 'Confirmed Vulnerability':
+      case 'Likely Vulnerability':
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d70015]">
+            <AlertOctagon className="h-3.5 w-3.5" />
+            <span>{status}</span>
+          </span>
+        );
+      case 'Uncertain':
+      case 'Needs Review':
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#c96000]">
+            <Clock className="h-3.5 w-3.5" />
+            <span>{status}</span>
+          </span>
+        );
+      case 'Likely False Positive':
+      case 'Informational':
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#6e6e73]">
+            <Shield className="h-3.5 w-3.5" />
+            <span>{status}</span>
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#0071e3]">
@@ -138,11 +164,11 @@ export const FindingsTable: React.FC<FindingsTableProps> = ({
             <Shield className="h-3 w-3" />
           </div>
           <span className="text-xs font-medium text-[#1d1d1f]">
-            Demo Dataset: Python Web Application Security Audit
+            {isLiveData ? 'Live Scan Results' : 'Demo Dataset: Python Web Application Security Audit'}
           </span>
           <span className="text-[#86868b]">·</span>
           <span className="text-xs text-[#6e6e73]">
-            7 realistic vulnerabilities discovered via Bandit AST & Qwen Reasoning
+            {isLiveData ? 'Findings returned by the connected PatchProof backend' : 'Sample findings — upload a ZIP to view real scan results'}
           </span>
         </div>
         <button
@@ -205,6 +231,11 @@ export const FindingsTable: React.FC<FindingsTableProps> = ({
             <option value="Verified Fixed">Verified Fixed</option>
             <option value="Needs Review">Needs Review</option>
             <option value="Pytest Failing">Pytest Failing</option>
+            <option value="Confirmed Vulnerability">Confirmed Vulnerability</option>
+            <option value="Likely Vulnerability">Likely Vulnerability</option>
+            <option value="Uncertain">Uncertain</option>
+            <option value="Likely False Positive">Likely False Positive</option>
+            <option value="Informational">Informational</option>
             <option value="Patch Available">Patch Available</option>
           </select>
         </div>

@@ -23,6 +23,7 @@ export default function App() {
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [scanInitialPreset, setScanInitialPreset] = useState<string | undefined>(undefined);
   const [notification, setNotification] = useState<string | null>(null);
+  const [hasRealScan, setHasRealScan] = useState(false);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -36,113 +37,103 @@ export default function App() {
     setIsScanModalOpen(true);
   };
 
-  const handleScanCompleted = (
-  newScan: RecentScan,
-  realFindings: any[] = []
-) => {
-  setScans((prev) => [newScan, ...prev]);
+  const handleScanCompleted = (newScan: RecentScan, realFindings: any[] = []) => {
+    setScans((prev) => [newScan, ...prev]);
+    setHasRealScan(true);
 
-  const mappedFindings: SecurityFinding[] = realFindings.map((f, index) => ({
-    id: `REAL-${Date.now()}-${index}`,
-    ruleId: f.category || 'Unknown',
-    title: f.message || f.category || 'Security finding',
-    severity: f.severity === 'CRITICAL' ? 'Critical'
-      : f.severity === 'HIGH' ? 'High'
-      : f.severity === 'LOW' ? 'Low' : 'Medium',
-    category: 'Path Traversal',
-    cwe: 'Needs review',
-    filePath: f.file || 'Unknown file',
-    lineNumber: f.line || 0,
-    confidence: 'Medium',
-    verificationStatus: 'Needs Review',
-    detectedBy: f.source || 'PatchProof',
-    description: f.message || 'Manual review required.',
-    aiExplanation: {
-      summary: f.message || 'Manual review required.',
-      rootCause: 'Not yet analyzed by AI.',
-      attackVector: 'Not yet analyzed.',
-      impact: 'Requires manual assessment.',
-      suggestedByModel: 'Not yet analyzed',
-    },
-    vulnerableCode: 'Source snippet not yet available.',
-    remediatedCode: 'No patch generated.',
-    patchDiff: '',
-    testVerification: {
-      testId: `TEST-${index}`,
-      testFile: 'Not run',
-      testFunction: 'Not run',
-      code: '',
-      status: 'unrun',
-      executionTimeMs: 0,
-      outputLog: 'No verification run for this finding.',
-      assertionsCount: 0,
-    },
-    dateDetected: new Date().toISOString(),
-  }));
+    const normalizeSeverity = (value: unknown): SecurityFinding['severity'] => {
+      const severity = String(value ?? '').toUpperCase();
+      if (severity === 'CRITICAL') return 'Critical';
+      if (severity === 'HIGH') return 'High';
+      if (severity === 'LOW' || severity === 'INFO' || severity === 'INFORMATIONAL') return 'Low';
+      return 'Medium';
+    };
 
-  setFindings(mappedFindings);
-  showNotification(
-    `Scan completed: ${mappedFindings.length} real finding(s).`
-  );
-};
+    const mapClassification = (value: unknown): SecurityFinding['verificationStatus'] => {
+      switch (String(value ?? '').toLowerCase()) {
+        case 'confirmed': return 'Confirmed Vulnerability';
+        case 'likely_vulnerability': return 'Likely Vulnerability';
+        case 'likely_false_positive': return 'Likely False Positive';
+        case 'informational': return 'Informational';
+        case 'uncertain': return 'Uncertain';
+        default: return 'Needs Review';
+      }
+    };
 
+    const mappedFindings: SecurityFinding[] = realFindings.map((f, index) => {
+      const records = Array.isArray(f.original_records) ? f.original_records : [];
+      const scannerRecord = records.find((record: any) => record.kind === 'scanner_result');
+      const discoveryRecord = records.find((record: any) => record.kind === 'ai_discovery');
+      const rawFinding = scannerRecord?.finding ?? {};
+      const ai = scannerRecord?.ai_analysis ?? discoveryRecord?.validation ?? {};
+      const message = rawFinding.message ?? discoveryRecord?.message ?? f.message ?? f.category ?? 'Security finding';
+      const evidence = ai.evidence ?? discoveryRecord?.evidence ?? discoveryRecord?.triage?.reason ?? f.evidence_sources?.reproducible_tests?.[0]?.proves ?? '';
+      const suggestedFix = ai.suggested_fix ?? discoveryRecord?.suggested_fix ?? '';
+      const classification = String(f.classification ?? f.triage?.classification ?? 'uncertain');
+      const verificationStatus = mapClassification(classification);
+      const confidenceValue = String(rawFinding.confidence ?? discoveryRecord?.confidence ?? 'MEDIUM').toLowerCase();
+      const confidence: SecurityFinding['confidence'] = confidenceValue === 'high' ? 'High' : confidenceValue === 'low' ? 'Low' : 'Medium';
+      const filePath = String(f.file ?? rawFinding.file ?? 'Unknown file');
+      const lineNumber = Number(f.line ?? rawFinding.line ?? 0);
+
+      return {
+        id: `SCAN-${Date.now()}-${index}`,
+        ruleId: String(rawFinding.rule_id ?? discoveryRecord?.category ?? rawFinding.category ?? f.category ?? 'Security finding'),
+        title: String(discoveryRecord?.category ?? rawFinding.category ?? f.category ?? 'Security finding'),
+        severity: normalizeSeverity(f.severity ?? rawFinding.severity ?? ai.severity),
+        category: String(discoveryRecord?.category ?? rawFinding.category ?? f.category ?? 'Security finding'),
+        cwe: String(rawFinding.cwe ?? 'Needs review'),
+        filePath,
+        lineNumber,
+        confidence,
+        verificationStatus,
+        detectedBy: records.map((record: any) => record.source ?? record.finding?.source).filter(Boolean).join(' + ') || 'PatchProof',
+        description: String(message),
+        aiExplanation: {
+          summary: String(ai.explanation ?? ai.reason ?? discoveryRecord?.message ?? message),
+          rootCause: String(evidence || 'The analyzer did not provide a separate root-cause statement.'),
+          attackVector: String(ai.verification_tests?.join(' ') ?? 'Review the reported source location and authorization flow.'),
+          impact: String(suggestedFix || 'Impact and remediation require review of the affected application.'),
+          suggestedByModel: String(discoveryRecord?.validation?.prompt_version ? 'Qwen (local Ollama)' : 'PatchProof analysis'),
+        },
+        vulnerableCode: String(rawFinding.code ?? rawFinding.evidence ?? discoveryRecord?.evidence ?? 'Source snippet was not included in the scan report.'),
+        remediatedCode: String(suggestedFix || 'No remediation suggestion was provided.'),
+        patchDiff: '',
+        testVerification: {
+          testId: `UNRUN-${index}`,
+          testFile: 'Not run',
+          testFunction: 'Not run',
+          code: '',
+          status: 'unrun',
+          executionTimeMs: 0,
+          outputLog: 'Uploaded project tests were not executed. Findings require manual or separately configured verification.',
+          assertionsCount: 0,
+        },
+        dateDetected: new Date().toISOString(),
+        classification,
+        classificationBasis: String(f.classification_basis ?? 'static/AI analysis'),
+        evidence: String(evidence),
+        suggestedFix: String(suggestedFix),
+      };
+    });
+
+    setFindings(mappedFindings);
+    const confirmed = mappedFindings.filter((finding) => finding.verificationStatus === 'Confirmed Vulnerability').length;
+    showNotification(`Scan completed: ${mappedFindings.length} finding(s); ${confirmed} confirmed by available evidence.`);
+  };
+
+  // Verification and remediation actions are intentionally non-mutating until
+  // real backend endpoints exist; the UI must never fabricate a passing test.
   const handleApplyFix = (findingId: string) => {
-    setFindings((prev) =>
-      prev.map((f) =>
-        f.id === findingId
-          ? {
-              ...f,
-              verificationStatus: 'Verified Fixed',
-              testVerification: {
-                ...f.testVerification,
-                status: 'passed',
-                outputLog: `${f.testVerification.testFile}::${f.testVerification.testFunction} PASSED [100%]\nRemediation applied. All invariant security assertions passed.`,
-              },
-            }
-          : f
-      )
-    );
-    if (selectedFinding && selectedFinding.id === findingId) {
-      setSelectedFinding((curr) =>
-        curr ? { ...curr, verificationStatus: 'Verified Fixed' } : null
-      );
-    }
-    showNotification(`Remediation applied and verified for ${findingId}`);
+    showNotification(`Automated remediation is not connected yet (${findingId}); no changes were applied.`);
   };
 
   const handleRunSingleTest = (findingId: string) => {
-    setFindings((prev) =>
-      prev.map((f) => {
-        if (f.id === findingId) {
-          return {
-            ...f,
-            verificationStatus: 'Verified Fixed',
-            testVerification: {
-              ...f.testVerification,
-              status: 'passed',
-              outputLog: `${f.testVerification.testFile}::${f.testVerification.testFunction} PASSED [100%]\n1 passed in ${f.testVerification.executionTimeMs}ms (Invariant confirmed)`,
-            },
-          };
-        }
-        return f;
-      })
-    );
-    showNotification(`Pytest verified test suite for ${findingId}`);
+    showNotification(`No test was run for ${findingId}. Live verification is not connected yet.`);
   };
 
   const handleRunAllTests = () => {
-    setFindings((prev) =>
-      prev.map((f) => ({
-        ...f,
-        verificationStatus: 'Verified Fixed',
-        testVerification: {
-          ...f.testVerification,
-          status: 'passed',
-          outputLog: `${f.testVerification.testFile}::${f.testVerification.testFunction} PASSED [100%]\n1 passed in ${f.testVerification.executionTimeMs}ms`,
-        },
-      }))
-    );
-    showNotification('All 7 verification suites executed and passed successfully.');
+    showNotification('No tests were run. Live verification for uploaded projects is not connected yet.');
   };
 
   const handleExportSarif = () => {
@@ -154,6 +145,7 @@ export default function App() {
   const handleResetDemoData = () => {
     setFindings(INITIAL_FINDINGS);
     setScans(INITIAL_RECENT_SCANS);
+    setHasRealScan(false);
     setSettings(DEFAULT_SETTINGS);
     showNotification('Reset workspace to initial demo state.');
   };
@@ -234,6 +226,7 @@ export default function App() {
                   onSelectFinding={(f) => setSelectedFinding(f)}
                   selectedFindingId={selectedFinding?.id}
                   onExportSarif={handleExportSarif}
+                  isLiveData={hasRealScan}
                 />
               </div>
 
@@ -316,6 +309,7 @@ export default function App() {
               onSelectFinding={(f) => setSelectedFinding(f)}
               selectedFindingId={selectedFinding?.id}
               onExportSarif={handleExportSarif}
+              isLiveData={hasRealScan}
             />
           </div>
         )}

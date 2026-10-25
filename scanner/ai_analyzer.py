@@ -796,7 +796,9 @@ def _prepare_source(file_path: Path, line_number) -> tuple[str, dict | None]:
     except (OSError, UnicodeError, ValueError, TypeError):
         return get_source_context(file_path, line_number), None
 
-def analyze_report(report_path: Path) -> dict:
+def analyze_report(
+    report_path: Path, output_path: Path | None = None
+) -> dict:
     report = load_json(report_path)
     target = Path(report["target"]).resolve()
     results = []
@@ -940,14 +942,15 @@ def analyze_report(report_path: Path) -> dict:
     }
 
 
-    output_path = SCANNER_DIR / "ai-report.json"
-    output_path.write_text(
+    destination = Path(output_path) if output_path is not None else SCANNER_DIR / "ai-report.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
         json.dumps(output, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
 
     print(f"\nAI analysis complete: {len(results)} result(s)")
-    print(f"Report saved to: {output_path}")
+    print(f"Report saved to: {destination}")
 
     return output
 
