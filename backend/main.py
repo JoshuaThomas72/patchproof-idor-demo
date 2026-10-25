@@ -145,14 +145,70 @@ async def scan_zip(file: UploadFile = File(...)):
                     detail="ZIP contains no Python source files.",
                 )
 
-            report = scan(str(project_root))
+            # Keep each scan's reports inside its temporary workspace. This avoids
+            # cross-request overwrites of scanner/report.json and ai-report.json.
+            scanner_report_path = temp_root / "scan-report.json"
+            ai_report_path = temp_root / "ai-report.json"
+            report = scan(str(project_root), output_path=scanner_report_path)
+
+            errors = list(report.get("errors", []))
+            ai_report = None
+            ai_analysis_status = "unavailable"
+            try:
+                # Import lazily so the API can still serve static findings if the
+                # optional Ollama Python client is not installed.
+                from scanner.ai_analyzer import analyze_report
+
+                ai_report = analyze_report(
+                    scanner_report_path,
+                    output_path=ai_report_path,
+                )
+                ai_analysis_status = "completed"
+            except Exception as exc:
+                # Preserve static scanner findings if the local model is unavailable.
+                errors.append(
+                    f"AI analysis unavailable: {type(exc).__name__}: {exc}"
+                )
+
+            target_findings = (
+                ai_report.get("consolidated_findings", [])
+                if ai_report
+                else report.get("findings", [])
+            )
+
+            # Convert absolute paths into project-relative paths for the UI.
+            normalized_findings = []
+            for item in target_findings:
+                finding = dict(item)
+                raw_file = finding.get("file", "")
+                if raw_file:
+                    try:
+                        candidate_path = Path(raw_file)
+                        if not candidate_path.is_absolute():
+                            candidate_path = project_root / candidate_path
+                        finding["file"] = str(
+                            candidate_path.resolve().relative_to(project_root)
+                        )
+                    except (ValueError, OSError):
+                        finding["file"] = str(raw_file)
+                if ai_report and ai_report.get("model"):
+                    finding["ai_model"] = ai_report["model"]
+                normalized_findings.append(finding)
 
             return {
                 "filename": file.filename,
-                "total_findings": report.get("total_findings", 0),
-                "findings": report.get("findings", []),
-                "errors": report.get("errors", []),
-                "test_verification": report.get("test_verification"),
+                "target": project_root.name,
+                "total_findings": len(normalized_findings),
+                "findings": normalized_findings,
+                "raw_findings": report.get("findings", []),
+                "ai_analysis_status": ai_analysis_status,
+                "ai_summary": ai_report.get("summary") if ai_report else None,
+                "ai_model": ai_report.get("model") if ai_report else None,
+                "errors": errors,
+                # Uploaded projects are analyzed statically; we do not execute
+                # untrusted test suites from uploaded archives.
+                "test_verification": None,
+                "tests_executed": False,
             }
 
     except HTTPException:

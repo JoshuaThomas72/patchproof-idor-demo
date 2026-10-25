@@ -8,7 +8,6 @@ import {
   Clock, 
   Cpu, 
   Terminal,
-  Loader2,
   RefreshCw
 } from 'lucide-react';
 import { SecurityFinding } from '../types';
@@ -24,7 +23,6 @@ export const VerificationView: React.FC<VerificationViewProps> = ({
   onRunSingleTest,
   onRunAllTests,
 }) => {
-  const [isRunningAll, setIsRunningAll] = useState(false);
   const [selectedFinding, setSelectedFinding] = useState<SecurityFinding>(findings[0]);
   const [activeTestLog, setActiveTestLog] = useState<string | null>(null);
 
@@ -32,11 +30,7 @@ export const VerificationView: React.FC<VerificationViewProps> = ({
   const passRate = ((verifiedCount / findings.length) * 100).toFixed(0);
 
   const handleRunAll = () => {
-    setIsRunningAll(true);
-    setTimeout(() => {
-      onRunAllTests();
-      setIsRunningAll(false);
-    }, 1800);
+    onRunAllTests();
   };
 
   return (
@@ -50,10 +44,10 @@ export const VerificationView: React.FC<VerificationViewProps> = ({
               <span>Mathematical Invariant Assurance</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[#1d1d1f]">
-              Automated Pytest Verification
+              Verification Status
             </h2>
             <p className="mt-2 text-sm text-[#6e6e73] leading-relaxed">
-              Detecting vulnerabilities is only half the battle. PatchProof synthesizes adversarial Pytest security harnesses that test against both the exploit payload and legitimate application invariants, verifying that vulnerabilities are genuinely resolved without regression.
+Verification status is shown here, but executing tests against uploaded projects is not connected yet. PatchProof does not mark tests as passed unless a real test execution result is returned by the backend.
             </p>
           </div>
 
@@ -65,19 +59,14 @@ export const VerificationView: React.FC<VerificationViewProps> = ({
               <span className="text-xs text-[#86868b]">pass rate</span>
             </div>
             <span className="text-xs text-[#6e6e73]">
-              {verifiedCount} of {findings.length} test suites passing
+              {verifiedCount} of {findings.length} findings marked verified fixed
             </span>
             <button
               onClick={handleRunAll}
-              disabled={isRunningAll}
-              className="inline-flex items-center gap-2 rounded-full bg-[#0071e3] px-5 py-2.5 text-xs font-medium text-white shadow-sm hover:bg-[#0077ed] active:scale-[0.98] transition-all disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-full border border-black/[0.1] bg-white px-5 py-2.5 text-xs font-medium text-[#1d1d1f] shadow-sm hover:bg-[#f5f5f7] active:scale-[0.98] transition-all"
             >
-              {isRunningAll ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="h-3.5 w-3.5 fill-current" />
-              )}
-              <span>{isRunningAll ? 'Executing Pytest Harness...' : 'Run All Verification Suites'}</span>
+              <Play className="h-3.5 w-3.5 fill-current" />
+              <span>Request Verification (not connected)</span>
             </button>
           </div>
         </div>
@@ -98,20 +87,20 @@ export const VerificationView: React.FC<VerificationViewProps> = ({
         <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
           <div className="flex items-center gap-2 text-xs font-semibold text-[#1d1d1f] mb-1">
             <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#f5f5f7] text-[11px] font-mono">2</span>
-            <span>Qwen Adversarial Synthesis</span>
+            <span>AI Finding Analysis</span>
           </div>
           <p className="text-xs text-[#6e6e73] leading-relaxed">
-            Local Ollama model synthesizes both the parameterized fix and an adversarial pytest unit test to prove exploit blockage.
+The configured local Ollama model reviews scanner findings and produces evidence-based explanations and suggested fixes.
           </p>
         </div>
 
         <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
           <div className="flex items-center gap-2 text-xs font-semibold text-[#1d1d1f] mb-1">
             <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#f5f5f7] text-[11px] font-mono">3</span>
-            <span>Pytest Invariant Execution</span>
+            <span>Test Verification</span>
           </div>
           <p className="text-xs text-[#6e6e73] leading-relaxed">
-            Executes test runner in an isolated container. Verifies that the exploit payload is rejected while valid traffic succeeds.
+Not yet connected for uploaded targets. Findings remain unverified until a real test run is integrated.
           </p>
         </div>
       </div>

@@ -9,11 +9,16 @@ export type FindingCategory =
   | 'Command Injection'
   | 'Insecure Cryptography';
 
-export type VerificationStatus = 
+export type VerificationStatus =
   | 'Verified Fixed'
   | 'Needs Review'
   | 'Pytest Failing'
-  | 'Patch Available';
+  | 'Patch Available'
+  | 'Confirmed Vulnerability'
+  | 'Likely Vulnerability'
+  | 'Uncertain'
+  | 'Likely False Positive'
+  | 'Informational';
 
 export interface VerificationTest {
   testId: string;
@@ -31,7 +36,7 @@ export interface SecurityFinding {
   ruleId: string; // e.g. B608 (Bandit SQLi), B108 (Tempfile), B301 (Pickle)
   title: string;
   severity: SeverityLevel;
-  category: FindingCategory;
+  category: FindingCategory | string;
   cwe: string;
   filePath: string;
   lineNumber: number;
@@ -52,6 +57,10 @@ export interface SecurityFinding {
   patchDiff: string;
   testVerification: VerificationTest;
   dateDetected: string;
+  classification?: string;
+  classificationBasis?: string;
+  evidence?: string;
+  suggestedFix?: string;
 }
 
 export interface RecentScan {

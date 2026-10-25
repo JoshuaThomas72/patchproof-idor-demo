@@ -1,6 +1,7 @@
 
 import ast
 from pathlib import Path
+import os
 
 DOCUMENT_LOOKUPS = {
     "get_document",
@@ -10,6 +11,18 @@ DOCUMENT_LOOKUPS = {
 OWNERSHIP_FIELDS = {"owner", "owner_id", "user_id"}
 IDENTITY_NAMES = {"user", "current_user", "owner"}
 
+EXCLUDED_DIRS = {
+    ".git",
+    ".venv",
+    ".venv-1",
+    "venv",
+    "env",
+    "site-packages",
+    "node_modules",
+    "__pycache__",
+    "build",
+    "dist",
+}
 
 def has_ownership_check(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Look for an explicit ownership comparison in a function."""
@@ -98,29 +111,26 @@ def scan_file(file_path: Path) -> list[dict]:
 
 def scan_project(project_path: str) -> list[dict]:
     root = Path(project_path).resolve()
-
-    if not root.is_dir():
-        raise NotADirectoryError(f"Not a directory: {root}")
-
-    ignored_dirs = {
-    ".git",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "node_modules",
-    "scanner",
-    }
     findings = []
 
-    for file_path in root.rglob("*.py"):
-        if any(part in ignored_dirs for part in file_path.parts):
-            continue
+    for current, dirs, files in os.walk(root):
+        # Prune excluded folders before scanning their contents
+        dirs[:] = [
+            d for d in dirs
+            if d.lower() not in EXCLUDED_DIRS
+            and not d.lower().startswith(".venv")
+            and not d.lower().startswith("venv-")
+        ]
 
-        print(f"Scanning: {file_path.relative_to(root)}", flush=True)
-        findings.extend(scan_file(file_path))
+        for filename in files:
+            if filename.endswith(".py"):
+                file_path = Path(current) / filename
+                if file_path.resolve() == Path(__file__).resolve():
+                    continue
+
+                findings.extend(scan_file(file_path))
 
     return findings
-
 
 if __name__ == "__main__":
     target = input("Enter the target project folder path: ").strip().strip('"')

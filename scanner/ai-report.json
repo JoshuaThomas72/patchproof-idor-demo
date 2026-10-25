@@ -1,7 +1,197 @@
 {
   "target": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo",
   "model": "qwen3.5:4b",
-  "analyzed_count": 1,
+  "analyzed_count": 20,
+  "discovered_vulnerabilities": [
+    {
+      "source": "LLM-Discovery",
+      "source_truncated": false,
+      "file": "main.py",
+      "line": 48,
+      "category": "IDOR",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence": "The document retrieval logic at line 48 checks ownership against the authenticated user (`user`), but the `user` variable is derived from a token that may not be validated for specific document access rights. An attacker with knowledge of another user's token (e.g., 'bob-token') can bypass the owner check by passing it as the Authorization header.",
+      "message": "The application implements Insecure Direct Object Reference (IDOR) because it relies solely on the identity of the requester to determine access, without verifying if the requester has explicit permission to view documents owned by others. If an attacker obtains a valid token for 'bob', they can request '/documents/doc-101' and see Alice's content.",
+      "suggested_fix": "Implement Role-Based Access Control (RBAC) or Explicit Permission Checks. Before returning document data, verify if the requesting user has permission to access the document. For example: `if not (document['owner'] == user or user in ['alice', 'bob']): raise HTTPException(status_code=403, detail='Access denied')`.",
+      "status": "Uncertain - manual review required",
+      "triage": {
+        "version": "1",
+        "classification": "uncertain",
+        "evidence_source": "deterministic_rule",
+        "rule": "ownership_check_detected_review_required",
+        "reason": "A server-side identity source and ownership guard were detected by static analysis. This heuristic does not prove that every unauthorized request is rejected, so manual review is required.",
+        "facts": {
+          "function": "get_document",
+          "ownership_compares": [
+            {
+              "line": 49,
+              "identity": "user",
+              "identity_source": "local_call:signed_in_user",
+              "identity_helper_rejects_invalid": true,
+              "guard": "raises"
+            }
+          ],
+          "enforced_server_identity": true
+        },
+        "claim_ruled_out": null,
+        "not_assessed": [
+          "Complete control-flow enforcement of the ownership check.",
+          "Soundness of identity validation and authentication.",
+          "Whether every access path enforces authorization."
+        ]
+      }
+    },
+    {
+      "source": "LLM-Discovery",
+      "source_truncated": false,
+      "file": "main_vulnerable.py",
+      "line": 48,
+      "category": "Broken Access Control (IDOR)",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence": "The function retrieves a document using `DOCUMENTS.get(document_id)` based solely on the provided ID, without verifying if the requesting user matches the document's owner.",
+      "message": "Any authenticated user can access any document in the `DOCUMENTS` dictionary regardless of ownership. The code checks for document existence but fails to enforce that the `user` must equal `document['owner']`, allowing users to read other users' data (e.g., Bob reading Alice's secret notes).",
+      "suggested_fix": "Add an explicit authorization check before returning the document: `if user != document['owner']: raise HTTPException(status_code=403, detail='Access denied')`.",
+      "status": "Likely vulnerability - requires verification",
+      "validation": {
+        "verdict": "likely",
+        "model_verdict": "likely",
+        "reason": "The code lacks an ownership check before returning document details, allowing any authenticated user to access documents owned by others.",
+        "claim_evidence": {
+          "checked": [
+            {
+              "line": 53,
+              "quote": "return {",
+              "verified": true
+            }
+          ],
+          "verified": 1,
+          "total": 1
+        },
+        "counter_evidence": {
+          "checked": [],
+          "verified": 0,
+          "total": 0
+        },
+        "missing_context": [
+          "ownership comparison logic"
+        ],
+        "downgrade_note": null,
+        "deterministic_facts": {
+          "function": "get_document",
+          "ownership_compares": [],
+          "enforced_server_identity": false
+        },
+        "context": {
+          "function": "get_document",
+          "helpers": [
+            "signed_in_user"
+          ],
+          "constants": [
+            "TOKENS",
+            "DOCUMENTS"
+          ],
+          "truncated": false,
+          "fallback": null,
+          "comments_stripped": true
+        },
+        "prompt_version": "2",
+        "independence": "same_model_same_source"
+      }
+    },
+    {
+      "source": "LLM-Discovery",
+      "source_truncated": true,
+      "file": "frontend/src/components/ScanUploadModal.tsx",
+      "line": 79,
+      "category": "Insecure Direct File Access",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence": "The code accepts a file from the user via drag-and-drop or input and immediately passes it to an external API without validating its contents or verifying ownership.",
+      "message": "The application trusts the client-provided file (`selectedFile`) directly in the `FormData` sent to `http://127.0.0.1:8765/api/scan-zip`. There is no server-side validation of the file's integrity, origin, or contents before processing. If the backend API does not properly validate the uploaded archive (e.g., checking for malicious payloads or verifying a secure token), this could lead to arbitrary code execution or data leakage on the server side.",
+      "suggested_fix": "Implement server-side validation of all uploaded files. Verify file signatures, check against known malware hashes, and ensure the backend API enforces strict access controls before processing the archive.",
+      "status": "Uncertain - manual review required",
+      "validation": {
+        "verdict": "uncertain",
+        "model_verdict": "uncertain",
+        "reason": "The reported line contains only client-side file validation logic without any server-side authorization checks or ownership comparisons.",
+        "claim_evidence": {
+          "checked": [],
+          "verified": 0,
+          "total": 0
+        },
+        "counter_evidence": {
+          "checked": [],
+          "verified": 0,
+          "total": 0
+        },
+        "missing_context": [
+          "server-side route handler",
+          "file upload endpoint implementation"
+        ],
+        "downgrade_note": null,
+        "deterministic_facts": null,
+        "context": {
+          "function": null,
+          "helpers": [],
+          "constants": [],
+          "truncated": false,
+          "fallback": "line_window",
+          "comments_stripped": false
+        },
+        "prompt_version": "2",
+        "independence": "same_model_same_source"
+      }
+    },
+    {
+      "source": "LLM-Discovery",
+      "source_truncated": false,
+      "file": "frontend/src/utils/sarifExport.ts",
+      "line": 23,
+      "category": "Information Disclosure",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence": "The code constructs a URL using template literals that directly interpolates `f.cwe` into the path: `https://cwe.mitre.org/data/definitions/${f.cwe.replace('CWE-', '')}.html`.",
+      "message": "If an attacker can influence the `cwe` property in the `findings` array (e.g., via input validation bypass or untrusted data), they could craft a value like 'CWE-123456789' to access arbitrary URLs on the MITRE CWE database, potentially exposing internal documentation or sensitive information if such pages exist.",
+      "suggested_fix": "Validate and sanitize the `cwe` input before interpolation. Ensure it matches a known pattern (e.g., 'CWE-XXXX') and restrict the resulting URL to a safe whitelist of allowed domains.",
+      "status": "Likely false positive - review before dismissal",
+      "validation": {
+        "verdict": "unlikely",
+        "model_verdict": "unlikely",
+        "reason": "The reported finding is unlikely because the code at line 23 only constructs a help URI for CWE documentation and does not involve any request-controlled input or sensitive operations.",
+        "claim_evidence": {
+          "checked": [],
+          "verified": 0,
+          "total": 0
+        },
+        "counter_evidence": {
+          "checked": [
+            {
+              "line": 23,
+              "quote": "helpUri: `https://cwe.mitre.org/data/definitions/${f.cwe.replace('CWE-', '')}.html`,",
+              "verified": true
+            }
+          ],
+          "verified": 1,
+          "total": 1
+        },
+        "missing_context": [],
+        "downgrade_note": null,
+        "deterministic_facts": null,
+        "context": {
+          "function": null,
+          "helpers": [],
+          "constants": [],
+          "truncated": false,
+          "fallback": "line_window",
+          "comments_stripped": false
+        },
+        "prompt_version": "2",
+        "independence": "same_model_same_source"
+      }
+    }
+  ],
   "results": [
     {
       "finding": {
@@ -16,16 +206,2826 @@
       "ai_analysis": {
         "vulnerability_type": "IDOR",
         "verdict": "likely",
-        "severity": "HIGH",
-        "explanation": "The endpoint retrieves documents without verifying if the requesting user owns them. A comment explicitly admits this check is missing.",
-        "evidence": "Line 52 states 'INTENTIONAL IDOR: missing document-owner authorization check' while returning document data regardless of ownership.",
-        "suggested_fix": "Add logic to compare the authenticated user's ID with the document's owner before returning data.",
+        "severity": "MEDIUM",
+        "explanation": "The endpoint retrieves documents by ID without verifying if the requesting user owns the document. Authorization checks only validate the token, not ownership rights.",
+        "evidence": "Code fetches documents using `DOCUMENTS.get(document_id)` and returns them to any authenticated user regardless of the document's owner field.",
+        "suggested_fix": "Add a check comparing the authenticated user ID with the document's owner before returning the document data.",
         "verification_tests": [
-          "Request a document owned by User B using User A's token.",
-          "Verify the server returns the document details without an ownership check.",
-          "Confirm the response includes the requested document's owner field."
+          "Request doc-101 with alice's token (should succeed).",
+          "Request doc-101 with bob's token (should fail or return error).",
+          "Verify response includes owner field matching the requesting user."
+        ]
+      },
+      "context": {
+        "function": "get_document",
+        "helpers": [
+          "signed_in_user"
+        ],
+        "constants": [
+          "TOKENS",
+          "DOCUMENTS"
+        ],
+        "truncated": false,
+        "fallback": null,
+        "comments_stripped": true
+      }
+    },
+    {
+      "finding": {
+        "source": "PatchProof-IDOR",
+        "category": "Potential IDOR",
+        "severity": "WARNING",
+        "confidence": "MEDIUM",
+        "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_context.py",
+        "line": 34,
+        "message": "Function 'test_function_context_includes_auth_helper_and_constants' may retrieve a document without an explicit ownership comparison. Manual review required."
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Potential IDOR",
+        "verdict": "uncertain",
+        "severity": "MEDIUM",
+        "explanation": "The test function verifies that a document retrieval helper exists but does not confirm if ownership checks are actually enforced. The presence of 'signed_in_user' in helpers suggests an intent to check authorization, yet the code snippet provided is merely a test assertion. No actual vulnerable logic or missing comparison is visible in this context.",
+        "evidence": "The source code shows assertions confirming the existence of a 'signed_in_user' helper and a 'get_document' function with a 401 exception. However, it does not show the implementation of these functions or prove that ownership validation is absent.",
+        "suggested_fix": "Review the actual implementation of 'get_document' to verify if it compares the requesting user against the document owner before returning data.",
+        "verification_tests": [
+          "Check if get_document validates user ownership before accessing document content.",
+          "Attempt to access a document using an unauthorized user token and observe if access is denied.",
+          "Inspect the logic within 'signed_in_user' helper to ensure it performs an explicit ownership comparison."
+        ]
+      },
+      "context": {
+        "function": "test_function_context_includes_auth_helper_and_constants",
+        "helpers": [],
+        "constants": [],
+        "truncated": false,
+        "fallback": null,
+        "comments_stripped": true
+      }
+    },
+    {
+      "finding": {
+        "source": "PatchProof-IDOR",
+        "category": "Potential IDOR",
+        "severity": "WARNING",
+        "confidence": "MEDIUM",
+        "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_idor_regression.py",
+        "line": 42,
+        "message": "Function 'test_real_main_vulnerable_is_never_ruled_out' may retrieve a document without an explicit ownership comparison. Manual review required."
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Potential IDOR",
+        "verdict": "uncertain",
+        "severity": "MEDIUM",
+        "explanation": "The provided code snippet is a test function that locates another file, not the vulnerable logic itself. No actual document retrieval or access control code is visible here.",
+        "evidence": "The helper function searches for text in 'main_vulnerable.py' but does not execute any business logic or data access operations.",
+        "suggested_fix": "Review main_vulnerable.py to verify if document_id usage lacks ownership checks before fetching documents.",
+        "verification_tests": [
+          "Check main_vulnerable.py for direct document retrieval using user-supplied IDs without owner verification.",
+          "Attempt to access a document belonging to another user via the application interface.",
+          "Confirm that no explicit ownership comparison exists in the document retrieval logic."
+        ]
+      },
+      "context": {
+        "function": "test_real_main_vulnerable_is_never_ruled_out",
+        "helpers": [
+          "_line_containing"
+        ],
+        "constants": [],
+        "truncated": false,
+        "fallback": null,
+        "comments_stripped": true
+      }
+    },
+    {
+      "finding": {
+        "source": "PatchProof-IDOR",
+        "category": "Potential IDOR",
+        "severity": "WARNING",
+        "confidence": "MEDIUM",
+        "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_triage.py",
+        "line": 334,
+        "message": "Function 'test_missing_owner_check_is_not_ruled_out' may retrieve a document without an explicit ownership comparison. Manual review required."
+      },
+      "ai_analysis": {
+        "vulnerability_type": "Potential IDOR",
+        "verdict": "uncertain",
+        "severity": "MEDIUM",
+        "explanation": "The test file simulates a vulnerable scenario but does not execute the actual application logic. It only verifies that the analyzer detects the lack of an ownership check in the provided code snippet.",
+        "evidence": "The source code defines a function `get_document` that retrieves data without checking user ownership, yet this is wrapped inside a unit test file designed to validate the scanner's behavior.",
+        "suggested_fix": "Implement explicit ownership verification logic before returning document data in production code.",
+        "verification_tests": [
+          "Run the application with a valid document ID and an unauthorized user to confirm access.",
+          "Inspect the `get_document` function for any owner comparison logic.",
+          "Verify that the test file itself is not executed as part of the live application."
+        ]
+      },
+      "context": {
+        "function": "test_missing_owner_check_is_not_ruled_out",
+        "helpers": [
+          "_write",
+          "_line_of",
+          "_cand"
+        ],
+        "constants": [
+          "IDOR",
+          "NO_CHECK"
+        ],
+        "truncated": false,
+        "fallback": null,
+        "comments_stripped": true
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B404",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\pipeline.py",
+        "line": 3,
+        "message": "Consider possible security implications associated with the subprocess module.",
+        "code": "2 import json\n3 import subprocess\n4 import sys\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "bandit_import_only",
+        "reason": "Bandit B404 flags only the import. It makes no claim about how subprocess is used; call sites are assessed via their own findings."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B603",
+        "category": "Process / Command Security",
+        "cwe": "CWE-78",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\pipeline.py",
+        "line": 28,
+        "message": "subprocess call - check for execution of untrusted input.",
+        "code": "27     print(\"\\n[3/4] Running regression tests...\")\n28     test_result = subprocess.run(\n29         [\n30             sys.executable,\n31             \"-m\",\n32             \"pytest\",\n33             \"tests/test_idor.py\",\n34             \"-v\",\n35             \"--tb=short\",\n36         ],\n37         cwd=PROJECT_ROOT,\n38         capture_output=True,\n39         text=True,\n40         timeout=120,\n41     )\n42 \n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "likely_false_positive",
+        "evidence_source": "deterministic_rule",
+        "rule": "subprocess_list_argv_no_shell",
+        "reason": "The analyzed call uses a fixed executable, list-form arguments, and shell=False. Ordinary shell command injection is not indicated by this call. This is not a general guarantee that the invoked program or its arguments are safe.",
+        "claim_ruled_out": "shell command injection (CWE-78)",
+        "facts": {
+          "call": "subprocess.run",
+          "call_line": 28,
+          "shell": false,
+          "argv_form": "list_literal",
+          "argv_elements": [
+            {
+              "expr": "sys.executable",
+              "kind": "sys.executable"
+            },
+            {
+              "expr": "'-m'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'pytest'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'tests/test_idor.py'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'-v'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'--tb=short'",
+              "kind": "literal"
+            }
+          ]
+        },
+        "residual_risks": []
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B404",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\test_runner.py",
+        "line": 3,
+        "message": "Consider possible security implications associated with the subprocess module.",
+        "code": "2 import json\n3 import subprocess\n4 import sys\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "bandit_import_only",
+        "reason": "Bandit B404 flags only the import. It makes no claim about how subprocess is used; call sites are assessed via their own findings."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B603",
+        "category": "Process / Command Security",
+        "cwe": "CWE-78",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\test_runner.py",
+        "line": 21,
+        "message": "subprocess call - check for execution of untrusted input.",
+        "code": "20 \n21     result = subprocess.run(\n22         command,\n23         cwd=ROOT,\n24         capture_output=True,\n25         text=True,\n26         timeout=120,\n27     )\n28 \n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "likely_false_positive",
+        "evidence_source": "deterministic_rule",
+        "rule": "subprocess_list_argv_no_shell",
+        "reason": "The analyzed call uses a fixed executable, list-form arguments, and shell=False. Ordinary shell command injection is not indicated by this call. This is not a general guarantee that the invoked program or its arguments are safe.",
+        "claim_ruled_out": "shell command injection (CWE-78)",
+        "facts": {
+          "call": "subprocess.run",
+          "call_line": 21,
+          "shell": false,
+          "argv_form": "list_literal",
+          "argv_elements": [
+            {
+              "expr": "sys.executable",
+              "kind": "sys.executable"
+            },
+            {
+              "expr": "'-m'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'pytest'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'tests/test_idor.py'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'-v'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'--tb=short'",
+              "kind": "literal"
+            }
+          ]
+        },
+        "residual_risks": []
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B404",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\unified_scanner.py",
+        "line": 3,
+        "message": "Consider possible security implications associated with the subprocess module.",
+        "code": "2 import json\n3 import subprocess\n4 import sys\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "bandit_import_only",
+        "reason": "Bandit B404 flags only the import. It makes no claim about how subprocess is used; call sites are assessed via their own findings."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B603",
+        "category": "Process / Command Security",
+        "cwe": "CWE-78",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "scanner\\unified_scanner.py",
+        "line": 61,
+        "message": "subprocess call - check for execution of untrusted input.",
+        "code": "60     try:\n61         result = subprocess.run(\n62             [\n63                 sys.executable, \"-m\", \"bandit\",\n64                 \"-r\", str(project_path),\n65                 \"-x\", excluded,\n66                 \"-f\", \"json\",\n67             ],\n68             capture_output=True,\n69             text=True,\n70             timeout=120,\n71         )\n72     except (subprocess.TimeoutExpired, OSError) as exc:\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "uncertain",
+        "evidence_source": "deterministic_rule",
+        "rule": "subprocess_shell_risk_reduced",
+        "reason": "The AST supports ruling out ordinary shell command injection for this call, but caller-controlled arguments leave residual risks that require review.",
+        "claim_ruled_out": "shell command injection (CWE-78)",
+        "facts": {
+          "call": "subprocess.run",
+          "call_line": 61,
+          "shell": false,
+          "argv_form": "list_literal",
+          "argv_elements": [
+            {
+              "expr": "sys.executable",
+              "kind": "sys.executable"
+            },
+            {
+              "expr": "'-m'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'bandit'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'-r'",
+              "kind": "literal"
+            },
+            {
+              "expr": "str(project_path)",
+              "kind": "parameter"
+            },
+            {
+              "expr": "'-x'",
+              "kind": "literal"
+            },
+            {
+              "expr": "excluded",
+              "kind": "literal"
+            },
+            {
+              "expr": "'-f'",
+              "kind": "literal"
+            },
+            {
+              "expr": "'json'",
+              "kind": "literal"
+            }
+          ]
+        },
+        "residual_risks": [
+          {
+            "class": "argument_injection",
+            "severity": "LOW",
+            "detail": "Caller-supplied value(s) ['str(project_path)'] become argv elements. List-form execution with shell=False prevents ordinary shell metacharacters from being interpreted by a shell, but does not rule out option injection or unsafe behavior in the invoked program. Review the callers and validate arguments against the invoked program's expected inputs."
+          }
         ]
       }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 30,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "29     results = parse_test_results({\"output\": PYTEST_OUTPUT})\n30     assert results[VULN_ID] == \"PASSED\"\n31     assert len(confirmations_for(\"main_vulnerable.py\", \"idor\", results)) == 1\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 31,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "30     assert results[VULN_ID] == \"PASSED\"\n31     assert len(confirmations_for(\"main_vulnerable.py\", \"idor\", results)) == 1\n32     assert confirmations_for(\"main_vulnerable.py\", \"idor\", {VULN_ID: \"FAILED\"}) == []\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 32,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "31     assert len(confirmations_for(\"main_vulnerable.py\", \"idor\", results)) == 1\n32     assert confirmations_for(\"main_vulnerable.py\", \"idor\", {VULN_ID: \"FAILED\"}) == []\n33     assert confirmations_for(\"main.py\", \"idor\", results) == []\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 33,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "32     assert confirmations_for(\"main_vulnerable.py\", \"idor\", {VULN_ID: \"FAILED\"}) == []\n33     assert confirmations_for(\"main.py\", \"idor\", results) == []\n34     assert confirmations_for(\"main_vulnerable.py\", \"sqli\", results) == []\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 34,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "33     assert confirmations_for(\"main.py\", \"idor\", results) == []\n34     assert confirmations_for(\"main_vulnerable.py\", \"sqli\", results) == []\n35 \n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 39,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "38     conf = [{\"test_id\": VULN_ID}]\n39     assert classify_group([_scanner(), _candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"confirmed\"\n40     assert classify_group([_candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"uncertain\"\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 40,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "39     assert classify_group([_scanner(), _candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"confirmed\"\n40     assert classify_group([_candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"uncertain\"\n41 \n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 45,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "44     r = classify_group([_candidate(\"likely\")] * 3, [], \"m\")\n45     assert (r[\"classification\"], r[\"basis\"], r[\"leaning\"]) == (\"uncertain\", \"llm_only\", \"vulnerable\")\n46     assert r[\"evidence_sources\"][\"llm\"][\"assessments\"] == 3\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 46,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "45     assert (r[\"classification\"], r[\"basis\"], r[\"leaning\"]) == (\"uncertain\", \"llm_only\", \"vulnerable\")\n46     assert r[\"evidence_sources\"][\"llm\"][\"assessments\"] == 3\n47     assert r[\"evidence_sources\"][\"llm\"][\"counts_as_independent_sources\"] == 1\n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
+    },
+    {
+      "finding": {
+        "source": "Bandit",
+        "rule_id": "B101",
+        "category": "Python Security",
+        "cwe": "Needs review",
+        "severity": "LOW",
+        "confidence": "HIGH",
+        "file": "tests\\test_classify.py",
+        "line": 47,
+        "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+        "code": "46     assert r[\"evidence_sources\"][\"llm\"][\"assessments\"] == 3\n47     assert r[\"evidence_sources\"][\"llm\"][\"counts_as_independent_sources\"] == 1\n48 \n"
+      },
+      "triage": {
+        "version": "1",
+        "classification": "informational",
+        "evidence_source": "deterministic_rule",
+        "rule": "test_only_assert",
+        "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+      }
     }
-  ]
+  ],
+  "consolidated_findings": [
+    {
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+      "line": 40,
+      "severity": "HIGH",
+      "sources": [
+        "LLM-Discovery",
+        "PatchProof-IDOR"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "PatchProof-IDOR",
+            "category": "Potential IDOR",
+            "severity": "WARNING",
+            "confidence": "MEDIUM",
+            "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\main_vulnerable.py",
+            "line": 40,
+            "message": "Function 'get_document' may retrieve a document without an explicit ownership comparison. Manual review required."
+          },
+          "ai_analysis": {
+            "vulnerability_type": "IDOR",
+            "verdict": "likely",
+            "severity": "MEDIUM",
+            "explanation": "The endpoint retrieves documents by ID without verifying if the requesting user owns the document. Authorization checks only validate the token, not ownership rights.",
+            "evidence": "Code fetches documents using `DOCUMENTS.get(document_id)` and returns them to any authenticated user regardless of the document's owner field.",
+            "suggested_fix": "Add a check comparing the authenticated user ID with the document's owner before returning the document data.",
+            "verification_tests": [
+              "Request doc-101 with alice's token (should succeed).",
+              "Request doc-101 with bob's token (should fail or return error).",
+              "Verify response includes owner field matching the requesting user."
+            ]
+          },
+          "context": {
+            "function": "get_document",
+            "helpers": [
+              "signed_in_user"
+            ],
+            "constants": [
+              "TOKENS",
+              "DOCUMENTS"
+            ],
+            "truncated": false,
+            "fallback": null,
+            "comments_stripped": true
+          }
+        },
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "source_truncated": false,
+          "file": "main_vulnerable.py",
+          "line": 48,
+          "category": "Broken Access Control (IDOR)",
+          "severity": "HIGH",
+          "confidence": "HIGH",
+          "evidence": "The function retrieves a document using `DOCUMENTS.get(document_id)` based solely on the provided ID, without verifying if the requesting user matches the document's owner.",
+          "message": "Any authenticated user can access any document in the `DOCUMENTS` dictionary regardless of ownership. The code checks for document existence but fails to enforce that the `user` must equal `document['owner']`, allowing users to read other users' data (e.g., Bob reading Alice's secret notes).",
+          "suggested_fix": "Add an explicit authorization check before returning the document: `if user != document['owner']: raise HTTPException(status_code=403, detail='Access denied')`.",
+          "status": "Likely vulnerability - requires verification",
+          "validation": {
+            "verdict": "likely",
+            "model_verdict": "likely",
+            "reason": "The code lacks an ownership check before returning document details, allowing any authenticated user to access documents owned by others.",
+            "claim_evidence": {
+              "checked": [
+                {
+                  "line": 53,
+                  "quote": "return {",
+                  "verified": true
+                }
+              ],
+              "verified": 1,
+              "total": 1
+            },
+            "counter_evidence": {
+              "checked": [],
+              "verified": 0,
+              "total": 0
+            },
+            "missing_context": [
+              "ownership comparison logic"
+            ],
+            "downgrade_note": null,
+            "deterministic_facts": {
+              "function": "get_document",
+              "ownership_compares": [],
+              "enforced_server_identity": false
+            },
+            "context": {
+              "function": "get_document",
+              "helpers": [
+                "signed_in_user"
+              ],
+              "constants": [
+                "TOKENS",
+                "DOCUMENTS"
+              ],
+              "truncated": false,
+              "fallback": null,
+              "comments_stripped": true
+            },
+            "prompt_version": "2",
+            "independence": "same_model_same_source"
+          }
+        }
+      ],
+      "lines": [
+        40,
+        48
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 2,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 0
+      },
+      "classification": "confirmed",
+      "classification_basis": "reproducible_test",
+      "leaning": null,
+      "evidence_sources": {
+        "static_tools": [
+          "PatchProof-IDOR"
+        ],
+        "deterministic_rules": [],
+        "reproducible_tests": [
+          {
+            "test_id": "tests/test_idor.py::test_document_ownership[main_vulnerable-True]",
+            "status": "PASSED",
+            "proves": "A signed-in non-owner (bob) receives HTTP 200 and the owner's document."
+          }
+        ],
+        "llm": {
+          "model": "qwen3.5:4b",
+          "assessments": 2,
+          "position": "likely",
+          "counts_as_independent_sources": 1
+        }
+      },
+      "duplicate_count": 2
+    },
+    {
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_context.py",
+      "line": 34,
+      "severity": "WARNING",
+      "sources": [
+        "PatchProof-IDOR"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "PatchProof-IDOR",
+            "category": "Potential IDOR",
+            "severity": "WARNING",
+            "confidence": "MEDIUM",
+            "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_context.py",
+            "line": 34,
+            "message": "Function 'test_function_context_includes_auth_helper_and_constants' may retrieve a document without an explicit ownership comparison. Manual review required."
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Potential IDOR",
+            "verdict": "uncertain",
+            "severity": "MEDIUM",
+            "explanation": "The test function verifies that a document retrieval helper exists but does not confirm if ownership checks are actually enforced. The presence of 'signed_in_user' in helpers suggests an intent to check authorization, yet the code snippet provided is merely a test assertion. No actual vulnerable logic or missing comparison is visible in this context.",
+            "evidence": "The source code shows assertions confirming the existence of a 'signed_in_user' helper and a 'get_document' function with a 401 exception. However, it does not show the implementation of these functions or prove that ownership validation is absent.",
+            "suggested_fix": "Review the actual implementation of 'get_document' to verify if it compares the requesting user against the document owner before returning data.",
+            "verification_tests": [
+              "Check if get_document validates user ownership before accessing document content.",
+              "Attempt to access a document using an unauthorized user token and observe if access is denied.",
+              "Inspect the logic within 'signed_in_user' helper to ensure it performs an explicit ownership comparison."
+            ]
+          },
+          "context": {
+            "function": "test_function_context_includes_auth_helper_and_constants",
+            "helpers": [],
+            "constants": [],
+            "truncated": false,
+            "fallback": null,
+            "comments_stripped": true
+          }
+        }
+      ],
+      "lines": [
+        34
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "static_finding_without_llm_support",
+      "leaning": null,
+      "evidence_sources": {
+        "static_tools": [
+          "PatchProof-IDOR"
+        ],
+        "deterministic_rules": [],
+        "reproducible_tests": [],
+        "llm": {
+          "model": "qwen3.5:4b",
+          "assessments": 1,
+          "position": "uncertain",
+          "counts_as_independent_sources": 1
+        }
+      },
+      "duplicate_count": 1
+    },
+    {
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_idor_regression.py",
+      "line": 42,
+      "severity": "WARNING",
+      "sources": [
+        "PatchProof-IDOR"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "PatchProof-IDOR",
+            "category": "Potential IDOR",
+            "severity": "WARNING",
+            "confidence": "MEDIUM",
+            "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_idor_regression.py",
+            "line": 42,
+            "message": "Function 'test_real_main_vulnerable_is_never_ruled_out' may retrieve a document without an explicit ownership comparison. Manual review required."
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Potential IDOR",
+            "verdict": "uncertain",
+            "severity": "MEDIUM",
+            "explanation": "The provided code snippet is a test function that locates another file, not the vulnerable logic itself. No actual document retrieval or access control code is visible here.",
+            "evidence": "The helper function searches for text in 'main_vulnerable.py' but does not execute any business logic or data access operations.",
+            "suggested_fix": "Review main_vulnerable.py to verify if document_id usage lacks ownership checks before fetching documents.",
+            "verification_tests": [
+              "Check main_vulnerable.py for direct document retrieval using user-supplied IDs without owner verification.",
+              "Attempt to access a document belonging to another user via the application interface.",
+              "Confirm that no explicit ownership comparison exists in the document retrieval logic."
+            ]
+          },
+          "context": {
+            "function": "test_real_main_vulnerable_is_never_ruled_out",
+            "helpers": [
+              "_line_containing"
+            ],
+            "constants": [],
+            "truncated": false,
+            "fallback": null,
+            "comments_stripped": true
+          }
+        }
+      ],
+      "lines": [
+        42
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "static_finding_without_llm_support",
+      "leaning": null,
+      "evidence_sources": {
+        "static_tools": [
+          "PatchProof-IDOR"
+        ],
+        "deterministic_rules": [],
+        "reproducible_tests": [],
+        "llm": {
+          "model": "qwen3.5:4b",
+          "assessments": 1,
+          "position": "uncertain",
+          "counts_as_independent_sources": 1
+        }
+      },
+      "duplicate_count": 1
+    },
+    {
+      "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_triage.py",
+      "line": 334,
+      "severity": "WARNING",
+      "sources": [
+        "PatchProof-IDOR"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "PatchProof-IDOR",
+            "category": "Potential IDOR",
+            "severity": "WARNING",
+            "confidence": "MEDIUM",
+            "file": "C:\\Users\\Ryan\\Ryan\\Cyber\\patchproof-idor-demo\\tests\\test_triage.py",
+            "line": 334,
+            "message": "Function 'test_missing_owner_check_is_not_ruled_out' may retrieve a document without an explicit ownership comparison. Manual review required."
+          },
+          "ai_analysis": {
+            "vulnerability_type": "Potential IDOR",
+            "verdict": "uncertain",
+            "severity": "MEDIUM",
+            "explanation": "The test file simulates a vulnerable scenario but does not execute the actual application logic. It only verifies that the analyzer detects the lack of an ownership check in the provided code snippet.",
+            "evidence": "The source code defines a function `get_document` that retrieves data without checking user ownership, yet this is wrapped inside a unit test file designed to validate the scanner's behavior.",
+            "suggested_fix": "Implement explicit ownership verification logic before returning document data in production code.",
+            "verification_tests": [
+              "Run the application with a valid document ID and an unauthorized user to confirm access.",
+              "Inspect the `get_document` function for any owner comparison logic.",
+              "Verify that the test file itself is not executed as part of the live application."
+            ]
+          },
+          "context": {
+            "function": "test_missing_owner_check_is_not_ruled_out",
+            "helpers": [
+              "_write",
+              "_line_of",
+              "_cand"
+            ],
+            "constants": [
+              "IDOR",
+              "NO_CHECK"
+            ],
+            "truncated": false,
+            "fallback": null,
+            "comments_stripped": true
+          }
+        }
+      ],
+      "lines": [
+        334
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "static_finding_without_llm_support",
+      "leaning": null,
+      "evidence_sources": {
+        "static_tools": [
+          "PatchProof-IDOR"
+        ],
+        "deterministic_rules": [],
+        "reproducible_tests": [],
+        "llm": {
+          "model": "qwen3.5:4b",
+          "assessments": 1,
+          "position": "uncertain",
+          "counts_as_independent_sources": 1
+        }
+      },
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\pipeline.py",
+      "line": 3,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B404",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\pipeline.py",
+            "line": 3,
+            "message": "Consider possible security implications associated with the subprocess module.",
+            "code": "2 import json\n3 import subprocess\n4 import sys\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "bandit_import_only",
+            "reason": "Bandit B404 flags only the import. It makes no claim about how subprocess is used; call sites are assessed via their own findings."
+          }
+        }
+      ],
+      "lines": [
+        3
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 1
+      },
+      "classification": "informational",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "informational",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\pipeline.py",
+      "line": 28,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B603",
+            "category": "Process / Command Security",
+            "cwe": "CWE-78",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\pipeline.py",
+            "line": 28,
+            "message": "subprocess call - check for execution of untrusted input.",
+            "code": "27     print(\"\\n[3/4] Running regression tests...\")\n28     test_result = subprocess.run(\n29         [\n30             sys.executable,\n31             \"-m\",\n32             \"pytest\",\n33             \"tests/test_idor.py\",\n34             \"-v\",\n35             \"--tb=short\",\n36         ],\n37         cwd=PROJECT_ROOT,\n38         capture_output=True,\n39         text=True,\n40         timeout=120,\n41     )\n42 \n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "likely_false_positive",
+            "evidence_source": "deterministic_rule",
+            "rule": "subprocess_list_argv_no_shell",
+            "reason": "The analyzed call uses a fixed executable, list-form arguments, and shell=False. Ordinary shell command injection is not indicated by this call. This is not a general guarantee that the invoked program or its arguments are safe.",
+            "claim_ruled_out": "shell command injection (CWE-78)",
+            "facts": {
+              "call": "subprocess.run",
+              "call_line": 28,
+              "shell": false,
+              "argv_form": "list_literal",
+              "argv_elements": [
+                {
+                  "expr": "sys.executable",
+                  "kind": "sys.executable"
+                },
+                {
+                  "expr": "'-m'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'pytest'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'tests/test_idor.py'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'-v'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'--tb=short'",
+                  "kind": "literal"
+                }
+              ]
+            },
+            "residual_risks": []
+          }
+        }
+      ],
+      "lines": [
+        28
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 1,
+        "uncertain": 0,
+        "informational": 0
+      },
+      "classification": "likely_false_positive",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "likely_false_positive",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\test_runner.py",
+      "line": 3,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B404",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\test_runner.py",
+            "line": 3,
+            "message": "Consider possible security implications associated with the subprocess module.",
+            "code": "2 import json\n3 import subprocess\n4 import sys\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "bandit_import_only",
+            "reason": "Bandit B404 flags only the import. It makes no claim about how subprocess is used; call sites are assessed via their own findings."
+          }
+        }
+      ],
+      "lines": [
+        3
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 1
+      },
+      "classification": "informational",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "informational",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\test_runner.py",
+      "line": 21,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B603",
+            "category": "Process / Command Security",
+            "cwe": "CWE-78",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\test_runner.py",
+            "line": 21,
+            "message": "subprocess call - check for execution of untrusted input.",
+            "code": "20 \n21     result = subprocess.run(\n22         command,\n23         cwd=ROOT,\n24         capture_output=True,\n25         text=True,\n26         timeout=120,\n27     )\n28 \n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "likely_false_positive",
+            "evidence_source": "deterministic_rule",
+            "rule": "subprocess_list_argv_no_shell",
+            "reason": "The analyzed call uses a fixed executable, list-form arguments, and shell=False. Ordinary shell command injection is not indicated by this call. This is not a general guarantee that the invoked program or its arguments are safe.",
+            "claim_ruled_out": "shell command injection (CWE-78)",
+            "facts": {
+              "call": "subprocess.run",
+              "call_line": 21,
+              "shell": false,
+              "argv_form": "list_literal",
+              "argv_elements": [
+                {
+                  "expr": "sys.executable",
+                  "kind": "sys.executable"
+                },
+                {
+                  "expr": "'-m'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'pytest'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'tests/test_idor.py'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'-v'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'--tb=short'",
+                  "kind": "literal"
+                }
+              ]
+            },
+            "residual_risks": []
+          }
+        }
+      ],
+      "lines": [
+        21
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 1,
+        "uncertain": 0,
+        "informational": 0
+      },
+      "classification": "likely_false_positive",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "likely_false_positive",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\unified_scanner.py",
+      "line": 3,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B404",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\unified_scanner.py",
+            "line": 3,
+            "message": "Consider possible security implications associated with the subprocess module.",
+            "code": "2 import json\n3 import subprocess\n4 import sys\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "bandit_import_only",
+            "reason": "Bandit B404 flags only the import. It makes no claim about how subprocess is used; call sites are assessed via their own findings."
+          }
+        }
+      ],
+      "lines": [
+        3
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 1
+      },
+      "classification": "informational",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "informational",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 1
+    },
+    {
+      "file": "scanner\\unified_scanner.py",
+      "line": 61,
+      "severity": "LOW",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B603",
+            "category": "Process / Command Security",
+            "cwe": "CWE-78",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "scanner\\unified_scanner.py",
+            "line": 61,
+            "message": "subprocess call - check for execution of untrusted input.",
+            "code": "60     try:\n61         result = subprocess.run(\n62             [\n63                 sys.executable, \"-m\", \"bandit\",\n64                 \"-r\", str(project_path),\n65                 \"-x\", excluded,\n66                 \"-f\", \"json\",\n67             ],\n68             capture_output=True,\n69             text=True,\n70             timeout=120,\n71         )\n72     except (subprocess.TimeoutExpired, OSError) as exc:\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "uncertain",
+            "evidence_source": "deterministic_rule",
+            "rule": "subprocess_shell_risk_reduced",
+            "reason": "The AST supports ruling out ordinary shell command injection for this call, but caller-controlled arguments leave residual risks that require review.",
+            "claim_ruled_out": "shell command injection (CWE-78)",
+            "facts": {
+              "call": "subprocess.run",
+              "call_line": 61,
+              "shell": false,
+              "argv_form": "list_literal",
+              "argv_elements": [
+                {
+                  "expr": "sys.executable",
+                  "kind": "sys.executable"
+                },
+                {
+                  "expr": "'-m'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'bandit'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'-r'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "str(project_path)",
+                  "kind": "parameter"
+                },
+                {
+                  "expr": "'-x'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "excluded",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'-f'",
+                  "kind": "literal"
+                },
+                {
+                  "expr": "'json'",
+                  "kind": "literal"
+                }
+              ]
+            },
+            "residual_risks": [
+              {
+                "class": "argument_injection",
+                "severity": "LOW",
+                "detail": "Caller-supplied value(s) ['str(project_path)'] become argv elements. List-form execution with shell=False prevents ordinary shell metacharacters from being interpreted by a shell, but does not rule out option injection or unsafe behavior in the invoked program. Review the callers and validate arguments against the invoked program's expected inputs."
+              }
+            ]
+          }
+        }
+      ],
+      "lines": [
+        61
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "uncertain",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "duplicate_count": 1
+    },
+    {
+      "file": "tests\\test_classify.py",
+      "line": 30,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 30,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "29     results = parse_test_results({\"output\": PYTEST_OUTPUT})\n30     assert results[VULN_ID] == \"PASSED\"\n31     assert len(confirmations_for(\"main_vulnerable.py\", \"idor\", results)) == 1\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 31,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "30     assert results[VULN_ID] == \"PASSED\"\n31     assert len(confirmations_for(\"main_vulnerable.py\", \"idor\", results)) == 1\n32     assert confirmations_for(\"main_vulnerable.py\", \"idor\", {VULN_ID: \"FAILED\"}) == []\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 32,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "31     assert len(confirmations_for(\"main_vulnerable.py\", \"idor\", results)) == 1\n32     assert confirmations_for(\"main_vulnerable.py\", \"idor\", {VULN_ID: \"FAILED\"}) == []\n33     assert confirmations_for(\"main.py\", \"idor\", results) == []\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 33,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "32     assert confirmations_for(\"main_vulnerable.py\", \"idor\", {VULN_ID: \"FAILED\"}) == []\n33     assert confirmations_for(\"main.py\", \"idor\", results) == []\n34     assert confirmations_for(\"main_vulnerable.py\", \"sqli\", results) == []\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 34,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "33     assert confirmations_for(\"main.py\", \"idor\", results) == []\n34     assert confirmations_for(\"main_vulnerable.py\", \"sqli\", results) == []\n35 \n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        }
+      ],
+      "lines": [
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 5
+      },
+      "classification": "informational",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "informational",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 5
+    },
+    {
+      "file": "tests\\test_classify.py",
+      "line": 39,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 39,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "38     conf = [{\"test_id\": VULN_ID}]\n39     assert classify_group([_scanner(), _candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"confirmed\"\n40     assert classify_group([_candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"uncertain\"\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 40,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "39     assert classify_group([_scanner(), _candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"confirmed\"\n40     assert classify_group([_candidate(\"likely\")], conf, \"m\")[\"classification\"] == \"uncertain\"\n41 \n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        }
+      ],
+      "lines": [
+        39,
+        40
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 2
+      },
+      "classification": "informational",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "informational",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 2
+    },
+    {
+      "file": "tests\\test_classify.py",
+      "line": 45,
+      "severity": "INFO",
+      "sources": [
+        "Bandit"
+      ],
+      "original_records": [
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 45,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "44     r = classify_group([_candidate(\"likely\")] * 3, [], \"m\")\n45     assert (r[\"classification\"], r[\"basis\"], r[\"leaning\"]) == (\"uncertain\", \"llm_only\", \"vulnerable\")\n46     assert r[\"evidence_sources\"][\"llm\"][\"assessments\"] == 3\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 46,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "45     assert (r[\"classification\"], r[\"basis\"], r[\"leaning\"]) == (\"uncertain\", \"llm_only\", \"vulnerable\")\n46     assert r[\"evidence_sources\"][\"llm\"][\"assessments\"] == 3\n47     assert r[\"evidence_sources\"][\"llm\"][\"counts_as_independent_sources\"] == 1\n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        },
+        {
+          "kind": "scanner_result",
+          "finding": {
+            "source": "Bandit",
+            "rule_id": "B101",
+            "category": "Python Security",
+            "cwe": "Needs review",
+            "severity": "LOW",
+            "confidence": "HIGH",
+            "file": "tests\\test_classify.py",
+            "line": 47,
+            "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+            "code": "46     assert r[\"evidence_sources\"][\"llm\"][\"assessments\"] == 3\n47     assert r[\"evidence_sources\"][\"llm\"][\"counts_as_independent_sources\"] == 1\n48 \n"
+          },
+          "triage": {
+            "version": "1",
+            "classification": "informational",
+            "evidence_source": "deterministic_rule",
+            "rule": "test_only_assert",
+            "reason": "assert in test code; stripping under -O cannot weaken a production security check."
+          }
+        }
+      ],
+      "lines": [
+        45,
+        46,
+        47
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 0,
+        "informational": 3
+      },
+      "classification": "informational",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "informational",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "severity_reported": "LOW",
+      "duplicate_count": 3
+    },
+    {
+      "file": "main.py",
+      "line": 48,
+      "severity": "HIGH",
+      "sources": [
+        "LLM-Discovery"
+      ],
+      "original_records": [
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "source_truncated": false,
+          "file": "main.py",
+          "line": 48,
+          "category": "IDOR",
+          "severity": "HIGH",
+          "confidence": "HIGH",
+          "evidence": "The document retrieval logic at line 48 checks ownership against the authenticated user (`user`), but the `user` variable is derived from a token that may not be validated for specific document access rights. An attacker with knowledge of another user's token (e.g., 'bob-token') can bypass the owner check by passing it as the Authorization header.",
+          "message": "The application implements Insecure Direct Object Reference (IDOR) because it relies solely on the identity of the requester to determine access, without verifying if the requester has explicit permission to view documents owned by others. If an attacker obtains a valid token for 'bob', they can request '/documents/doc-101' and see Alice's content.",
+          "suggested_fix": "Implement Role-Based Access Control (RBAC) or Explicit Permission Checks. Before returning document data, verify if the requesting user has permission to access the document. For example: `if not (document['owner'] == user or user in ['alice', 'bob']): raise HTTPException(status_code=403, detail='Access denied')`.",
+          "status": "Uncertain - manual review required",
+          "triage": {
+            "version": "1",
+            "classification": "uncertain",
+            "evidence_source": "deterministic_rule",
+            "rule": "ownership_check_detected_review_required",
+            "reason": "A server-side identity source and ownership guard were detected by static analysis. This heuristic does not prove that every unauthorized request is rejected, so manual review is required.",
+            "facts": {
+              "function": "get_document",
+              "ownership_compares": [
+                {
+                  "line": 49,
+                  "identity": "user",
+                  "identity_source": "local_call:signed_in_user",
+                  "identity_helper_rejects_invalid": true,
+                  "guard": "raises"
+                }
+              ],
+              "enforced_server_identity": true
+            },
+            "claim_ruled_out": null,
+            "not_assessed": [
+              "Complete control-flow enforcement of the ownership check.",
+              "Soundness of identity validation and authentication.",
+              "Whether every access path enforces authorization."
+            ]
+          }
+        }
+      ],
+      "lines": [
+        48
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "All grouped records agree on deterministic triage.",
+      "leaning": "uncertain",
+      "evidence_sources": [
+        "deterministic_triage"
+      ],
+      "duplicate_count": 1
+    },
+    {
+      "file": "frontend/src/components/ScanUploadModal.tsx",
+      "line": 79,
+      "severity": "HIGH",
+      "sources": [
+        "LLM-Discovery"
+      ],
+      "original_records": [
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "source_truncated": true,
+          "file": "frontend/src/components/ScanUploadModal.tsx",
+          "line": 79,
+          "category": "Insecure Direct File Access",
+          "severity": "HIGH",
+          "confidence": "HIGH",
+          "evidence": "The code accepts a file from the user via drag-and-drop or input and immediately passes it to an external API without validating its contents or verifying ownership.",
+          "message": "The application trusts the client-provided file (`selectedFile`) directly in the `FormData` sent to `http://127.0.0.1:8765/api/scan-zip`. There is no server-side validation of the file's integrity, origin, or contents before processing. If the backend API does not properly validate the uploaded archive (e.g., checking for malicious payloads or verifying a secure token), this could lead to arbitrary code execution or data leakage on the server side.",
+          "suggested_fix": "Implement server-side validation of all uploaded files. Verify file signatures, check against known malware hashes, and ensure the backend API enforces strict access controls before processing the archive.",
+          "status": "Uncertain - manual review required",
+          "validation": {
+            "verdict": "uncertain",
+            "model_verdict": "uncertain",
+            "reason": "The reported line contains only client-side file validation logic without any server-side authorization checks or ownership comparisons.",
+            "claim_evidence": {
+              "checked": [],
+              "verified": 0,
+              "total": 0
+            },
+            "counter_evidence": {
+              "checked": [],
+              "verified": 0,
+              "total": 0
+            },
+            "missing_context": [
+              "server-side route handler",
+              "file upload endpoint implementation"
+            ],
+            "downgrade_note": null,
+            "deterministic_facts": null,
+            "context": {
+              "function": null,
+              "helpers": [],
+              "constants": [],
+              "truncated": false,
+              "fallback": "line_window",
+              "comments_stripped": false
+            },
+            "prompt_version": "2",
+            "independence": "same_model_same_source"
+          }
+        }
+      ],
+      "lines": [
+        79
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 0,
+        "uncertain": 1,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "llm_only",
+      "leaning": null,
+      "evidence_sources": {
+        "static_tools": [],
+        "deterministic_rules": [],
+        "reproducible_tests": [],
+        "llm": {
+          "model": "qwen3.5:4b",
+          "assessments": 1,
+          "position": "uncertain",
+          "counts_as_independent_sources": 1
+        }
+      },
+      "duplicate_count": 1
+    },
+    {
+      "file": "frontend/src/utils/sarifExport.ts",
+      "line": 23,
+      "severity": "MEDIUM",
+      "sources": [
+        "LLM-Discovery"
+      ],
+      "original_records": [
+        {
+          "kind": "ai_discovery",
+          "source": "LLM-Discovery",
+          "source_truncated": false,
+          "file": "frontend/src/utils/sarifExport.ts",
+          "line": 23,
+          "category": "Information Disclosure",
+          "severity": "MEDIUM",
+          "confidence": "HIGH",
+          "evidence": "The code constructs a URL using template literals that directly interpolates `f.cwe` into the path: `https://cwe.mitre.org/data/definitions/${f.cwe.replace('CWE-', '')}.html`.",
+          "message": "If an attacker can influence the `cwe` property in the `findings` array (e.g., via input validation bypass or untrusted data), they could craft a value like 'CWE-123456789' to access arbitrary URLs on the MITRE CWE database, potentially exposing internal documentation or sensitive information if such pages exist.",
+          "suggested_fix": "Validate and sanitize the `cwe` input before interpolation. Ensure it matches a known pattern (e.g., 'CWE-XXXX') and restrict the resulting URL to a safe whitelist of allowed domains.",
+          "status": "Likely false positive - review before dismissal",
+          "validation": {
+            "verdict": "unlikely",
+            "model_verdict": "unlikely",
+            "reason": "The reported finding is unlikely because the code at line 23 only constructs a help URI for CWE documentation and does not involve any request-controlled input or sensitive operations.",
+            "claim_evidence": {
+              "checked": [],
+              "verified": 0,
+              "total": 0
+            },
+            "counter_evidence": {
+              "checked": [
+                {
+                  "line": 23,
+                  "quote": "helpUri: `https://cwe.mitre.org/data/definitions/${f.cwe.replace('CWE-', '')}.html`,",
+                  "verified": true
+                }
+              ],
+              "verified": 1,
+              "total": 1
+            },
+            "missing_context": [],
+            "downgrade_note": null,
+            "deterministic_facts": null,
+            "context": {
+              "function": null,
+              "helpers": [],
+              "constants": [],
+              "truncated": false,
+              "fallback": "line_window",
+              "comments_stripped": false
+            },
+            "prompt_version": "2",
+            "independence": "same_model_same_source"
+          }
+        }
+      ],
+      "lines": [
+        23
+      ],
+      "verdict_counts": {
+        "likely_vulnerability": 0,
+        "likely_false_positive": 1,
+        "uncertain": 0,
+        "informational": 0
+      },
+      "classification": "uncertain",
+      "classification_basis": "llm_only",
+      "leaning": "false_positive",
+      "evidence_sources": {
+        "static_tools": [],
+        "deterministic_rules": [],
+        "reproducible_tests": [],
+        "llm": {
+          "model": "qwen3.5:4b",
+          "assessments": 1,
+          "position": "unlikely",
+          "counts_as_independent_sources": 1
+        }
+      },
+      "duplicate_count": 1
+    }
+  ],
+  "test_results": {
+    "tests/test_idor.py::test_document_ownership[main_vulnerable-True]": "PASSED",
+    "tests/test_idor.py::test_document_ownership[main-False]": "PASSED",
+    "tests/test_idor.py::test_owner_can_read_own_document": "PASSED"
+  },
+  "total_findings_discovered": 96,
+  "skipped_count": 76,
+  "skipped_findings": [
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 52,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "51     r = classify_group([_scanner(\"Bandit\", \"likely\")], [], \"m\")\n52     assert r[\"classification\"] == \"likely_vulnerability\"\n53 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 57,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "56     r = classify_group([_scanner(\"Bandit\", \"unlikely\")], [], \"m\")\n57     assert (r[\"classification\"], r[\"leaning\"]) == (\"uncertain\", \"false_positive\")\n58 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 62,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "61     r = classify_group([_triaged(\"likely_false_positive\"), _candidate(\"likely\")], [], \"m\")\n62     assert r[\"classification\"] == \"likely_false_positive\"\n63 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 66,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "65 def test_informational_only():\n66     assert classify_group([_triaged(\"informational\")] * 2, [], \"m\")[\"classification\"] == \"informational\"\n67 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 72,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "71     r = classify_group([_scanner(), triaged], [], \"m\")\n72     assert (r[\"classification\"], r[\"basis\"]) == (\"uncertain\", \"conflicting_deterministic_evidence\")\n73 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 85,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "84     unconfirmed = build_consolidated_findings(report, [item], [], {})\n85     assert confirmed[0][\"classification\"] == \"confirmed\"\n86     assert unconfirmed[0][\"classification\"] == \"likely_vulnerability\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_classify.py",
+      "line": 86,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "85     assert confirmed[0][\"classification\"] == \"confirmed\"\n86     assert unconfirmed[0][\"classification\"] == \"likely_vulnerability\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 28,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "27     stripped, ok = strip_python_comments(SRC)\n28     assert ok\n29     assert \"INTENTIONAL\" not in stripped and \"demo only\" not in stripped\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 29,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "28     assert ok\n29     assert \"INTENTIONAL\" not in stripped and \"demo only\" not in stripped\n30     assert '\"# not a comment\"' in stripped\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 30,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "29     assert \"INTENTIONAL\" not in stripped and \"demo only\" not in stripped\n30     assert '\"# not a comment\"' in stripped\n31     assert len(stripped.splitlines()) == len(SRC.splitlines())\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 31,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "30     assert '\"# not a comment\"' in stripped\n31     assert len(stripped.splitlines()) == len(SRC.splitlines())\n32 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 38,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "37     meta, text = prepared[\"meta\"], prepared[\"text\"]\n38     assert meta[\"function\"] == \"get_document\"\n39     assert meta[\"helpers\"] == [\"signed_in_user\"]\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 39,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "38     assert meta[\"function\"] == \"get_document\"\n39     assert meta[\"helpers\"] == [\"signed_in_user\"]\n40     assert meta[\"constants\"] == [\"TOKENS\"]\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 40,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "39     assert meta[\"helpers\"] == [\"signed_in_user\"]\n40     assert meta[\"constants\"] == [\"TOKENS\"]\n41     assert meta[\"comments_stripped\"] is True\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 41,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "40     assert meta[\"constants\"] == [\"TOKENS\"]\n41     assert meta[\"comments_stripped\"] is True\n42     assert \"raise HTTPException(status_code=401)\" in text\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 42,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "41     assert meta[\"comments_stripped\"] is True\n42     assert \"raise HTTPException(status_code=401)\" in text\n43     assert \"INTENTIONAL\" not in text\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 43,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "42     assert \"raise HTTPException(status_code=401)\" in text\n43     assert \"INTENTIONAL\" not in text\n44 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 48,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "47     prepared = prepare_context(\"a\\nb\\nc\\n\", 2, \".tsx\")\n48     assert prepared[\"meta\"][\"fallback\"] == \"line_window\"\n49     assert prepared[\"text\"].splitlines()[0].startswith(\"1: \")\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 49,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "48     assert prepared[\"meta\"][\"fallback\"] == \"line_window\"\n49     assert prepared[\"text\"].splitlines()[0].startswith(\"1: \")\n50 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 55,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "54     quote = \"signed_in_user(authorization)\"\n55     assert verify_citations(context, [{\"line\": 10, \"quote\": quote}])[\"verified\"] == 1\n56     assert verify_citations(context, [{\"line\": 11, \"quote\": quote}])[\"verified\"] == 1  # slack of 1\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 56,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "55     assert verify_citations(context, [{\"line\": 10, \"quote\": quote}])[\"verified\"] == 1\n56     assert verify_citations(context, [{\"line\": 11, \"quote\": quote}])[\"verified\"] == 1  # slack of 1\n57     assert verify_citations(context, [{\"line\": 10, \"quote\": \"if document['owner'] != user\"}])[\"verified\"] == 0\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 57,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "56     assert verify_citations(context, [{\"line\": 11, \"quote\": quote}])[\"verified\"] == 1  # slack of 1\n57     assert verify_citations(context, [{\"line\": 10, \"quote\": \"if document['owner'] != user\"}])[\"verified\"] == 0\n58     assert verify_citations(context, [{\"line\": 10, \"quote\": \"user\"}])[\"verified\"] == 0  # too short\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 58,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "57     assert verify_citations(context, [{\"line\": 10, \"quote\": \"if document['owner'] != user\"}])[\"verified\"] == 0\n58     assert verify_citations(context, [{\"line\": 10, \"quote\": \"user\"}])[\"verified\"] == 0  # too short\n59     assert verify_citations(context, \"not a list\")[\"total\"] == 0\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_context.py",
+      "line": 59,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "58     assert verify_citations(context, [{\"line\": 10, \"quote\": \"user\"}])[\"verified\"] == 0  # too short\n59     assert verify_citations(context, \"not a list\")[\"total\"] == 0\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 26,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "25     if alice_can_read_bobs_document:\n26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 27,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "26         assert response.status_code == 200\n27         assert response.json()[\"owner\"] == \"alice\"\n28     else:\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 29,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "28     else:\n29         assert response.status_code == 404\n30 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 40,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "39 \n40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor.py",
+      "line": 41,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "40     assert response.status_code == 200\n41     assert response.json()[\"owner\"] == \"alice\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 26,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "25     stripped, ok = strip_python_comments(src)\n26     assert ok\n27     (tmp_path / \"main_vulnerable.py\").write_text(stripped, encoding=\"utf-8\")\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 28,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "27     (tmp_path / \"main_vulnerable.py\").write_text(stripped, encoding=\"utf-8\")\n28     assert \"main_vulnerable.py\" in _files(scan_project(str(tmp_path)))\n29 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 39,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "38     cand = {\"file\": \"main.py\", \"line\": line, \"category\": \"Broken Access Control (IDOR)\"}\n39     assert triage_candidate(cand, ROOT)[\"classification\"] == \"uncertain\"\n40 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 45,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "44     cand = {\"file\": \"main_vulnerable.py\", \"line\": line, \"category\": \"Broken Access Control (IDOR)\"}\n45     assert triage_candidate(cand, ROOT) is None\n46 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 70,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "69     (tmp_path / \"app.py\").write_text(NOOP_COMPARISON, encoding=\"utf-8\")\n70     assert \"app.py\" in _files(scan_project(str(tmp_path)))\n71 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 76,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "75     (tmp_path / \"app.py\").write_text(CLIENT_SUPPLIED_IDENTITY, encoding=\"utf-8\")\n76     assert \"app.py\" in _files(scan_project(str(tmp_path)))\n77 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 88,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "87 def test_intentional_idor_is_detected(project_findings):\n88     assert \"main_vulnerable.py\" in _files(project_findings)\n89 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 92,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "91 def test_ownership_checked_endpoint_is_not_flagged(project_findings):\n92     assert \"main.py\" not in _files(project_findings)\n93 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_idor_regression.py",
+      "line": 99,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "98     findings = scan_project(str(tmp_path))\n99     assert \"main_vulnerable.py\" in _files(findings)\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 65,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "64 \n65     assert result is not None\n66     assert result[\"classification\"] == \"likely_false_positive\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 66,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "65     assert result is not None\n66     assert result[\"classification\"] == \"likely_false_positive\"\n67     assert result[\"rule\"] == \"subprocess_list_argv_no_shell\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 67,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "66     assert result[\"classification\"] == \"likely_false_positive\"\n67     assert result[\"rule\"] == \"subprocess_list_argv_no_shell\"\n68 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 79,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "78 \n79     assert result is None\n80 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 91,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "90 \n91     assert result is None\n92 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 114,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "113 \n114     assert result[\"classification\"] == \"uncertain\"\n115     assert result[\"facts\"][\"shell\"] is False\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 115,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "114     assert result[\"classification\"] == \"uncertain\"\n115     assert result[\"facts\"][\"shell\"] is False\n116     assert not [e for e in result[\"facts\"][\"argv_elements\"] if e[\"kind\"] == \"dynamic\"]\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 116,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "115     assert result[\"facts\"][\"shell\"] is False\n116     assert not [e for e in result[\"facts\"][\"argv_elements\"] if e[\"kind\"] == \"dynamic\"]\n117     assert [r[\"class\"] for r in result[\"residual_risks\"]] == [\"argument_injection\"]\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 117,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "116     assert not [e for e in result[\"facts\"][\"argv_elements\"] if e[\"kind\"] == \"dynamic\"]\n117     assert [r[\"class\"] for r in result[\"residual_risks\"]] == [\"argument_injection\"]\n118 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 123,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "122     rel = _write(tmp_path, \"a.py\", src)\n123     assert triage_finding(_bandit(\"B603\", rel, 4), tmp_path) is None\n124 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 129,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "128     rel = _write(tmp_path, \"a.py\", src)\n129     assert triage_finding(_bandit(\"B603\", rel, 4), tmp_path) is None\n130 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 140,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "139     rel = _write(tmp_path, \"a.py\", src)\n140     assert triage_finding(_bandit(\"B603\", rel, 5), tmp_path) is None\n141 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 146,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "145     rel = _write(tmp_path, \"a.py\", src)\n146     assert triage_finding(_bandit(\"B603\", rel, 4), tmp_path) is None\n147 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 152,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "151     result = triage_finding(_bandit(\"B404\", \"x.py\", 3), tmp_path)\n152     assert result[\"classification\"] == \"informational\"\n153 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 158,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "157     result = triage_finding(_bandit(\"B101\", rel, 2), tmp_path)\n158     assert result[\"classification\"] == \"informational\"\n159 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 163,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "162     rel = _write(tmp_path, \"app.py\", \"def check(u):\\n    assert u.is_admin\\n\")\n163     assert triage_finding(_bandit(\"B101\", rel, 2), tmp_path) is None\n164 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 169,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "168     rel = _write(tmp_path, \"scanner/test_runner.py\", \"def run():\\n    assert True\\n\")\n169     assert triage_finding(_bandit(\"B101\", rel, 2), tmp_path) is None\n170 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 174,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "173     finding = {\"source\": \"PatchProof-IDOR\", \"file\": \"main_vulnerable.py\", \"line\": 40}\n174     assert triage_finding(finding, tmp_path) is None\n175 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 193,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "192 \n193     assert sorted(g[\"lines\"] for g in groups) == [[26, 27, 29], [40, 41]]\n194     assert sum(g[\"duplicate_count\"] for g in groups) == 5  # nothing dropped\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 194,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "193     assert sorted(g[\"lines\"] for g in groups) == [[26, 27, 29], [40, 41]]\n194     assert sum(g[\"duplicate_count\"] for g in groups) == 5  # nothing dropped\n195     assert {g[\"classification\"] for g in groups} == {\"informational\"}\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 195,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "194     assert sum(g[\"duplicate_count\"] for g in groups) == 5  # nothing dropped\n195     assert {g[\"classification\"] for g in groups} == {\"informational\"}\n196 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 301,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "300     compare = result[\"facts\"][\"ownership_compares\"][0]\n301     assert result[\"classification\"] == \"uncertain\"\n302     assert compare[\"identity_source\"] == \"local_call:signed_in_user\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 302,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "301     assert result[\"classification\"] == \"uncertain\"\n302     assert compare[\"identity_source\"] == \"local_call:signed_in_user\"\n303     assert compare[\"guard\"] == \"raises\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 303,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "302     assert compare[\"identity_source\"] == \"local_call:signed_in_user\"\n303     assert compare[\"guard\"] == \"raises\"\n304     assert result[\"not_assessed\"]\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 304,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "303     assert compare[\"guard\"] == \"raises\"\n304     assert result[\"not_assessed\"]\n305 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 310,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "309     line = _line_of(DEPENDS, 'if document[\"owner\"] != user')\n310     assert triage_candidate(_cand(rel, line), tmp_path)[\"classification\"] == \"uncertain\"\n311 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 316,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "315     line = _line_of(SPOOFED, 'if document[\"owner\"] != user')\n316     assert triage_candidate(_cand(rel, line), tmp_path) is None\n317     facts = candidate_facts(_cand(rel, line), tmp_path)\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 318,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "317     facts = candidate_facts(_cand(rel, line), tmp_path)\n318     assert facts[\"ownership_compares\"][0][\"identity_source\"].startswith(\"parameter:Header\")\n319 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 324,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "323     line = _line_of(UNSAFE_HELPER, 'if document[\"owner\"] != user')\n324     assert triage_candidate(_cand(rel, line), tmp_path) is None\n325 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 330,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "329     line = _line_of(NOOP, 'if document[\"owner\"] != user')\n330     assert triage_candidate(_cand(rel, line), tmp_path) is None\n331     assert candidate_facts(_cand(rel, line), tmp_path)[\"ownership_compares\"][0][\"guard\"] == \"none_detected\"\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 331,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "330     assert triage_candidate(_cand(rel, line), tmp_path) is None\n331     assert candidate_facts(_cand(rel, line), tmp_path)[\"ownership_compares\"][0][\"guard\"] == \"none_detected\"\n332 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 337,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "336     line = _line_of(NO_CHECK, \"DOCUMENTS.get\")\n337     assert triage_candidate(_cand(rel, line), tmp_path) is None\n338     assert candidate_facts(_cand(rel, line), tmp_path)[\"ownership_compares\"] == []\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 338,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "337     assert triage_candidate(_cand(rel, line), tmp_path) is None\n338     assert candidate_facts(_cand(rel, line), tmp_path)[\"ownership_compares\"] == []\n339 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 345,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "344     result = triage_candidate(_cand(rel, 1), tmp_path)\n345     assert result[\"classification\"] == \"uncertain\"\n346     assert result[\"followups\"][0][\"endpoints\"] == [\"/api/scan-zip\"]\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 346,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "345     assert result[\"classification\"] == \"uncertain\"\n346     assert result[\"followups\"][0][\"endpoints\"] == [\"/api/scan-zip\"]\n347 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 352,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "351     result = triage_candidate(_cand(rel, 1, \"Hardcoded Internal Endpoint\"), tmp_path)\n352     assert result[\"classification\"] == \"informational\"\n353 \n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 357,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "356     rel = _write(tmp_path, \"frontend/src/components/Upload.tsx\", TSX)\n357     assert triage_candidate(_cand(rel, 1, \"Hardcoded Credentials\"), tmp_path) is None\n358     assert triage_candidate(_cand(rel, 1, \"Cross-Site Scripting (XSS)\"), tmp_path) is None\n"
+    },
+    {
+      "source": "Bandit",
+      "rule_id": "B101",
+      "category": "Python Security",
+      "cwe": "Needs review",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "file": "tests\\test_triage.py",
+      "line": 358,
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+      "code": "357     assert triage_candidate(_cand(rel, 1, \"Hardcoded Credentials\"), tmp_path) is None\n358     assert triage_candidate(_cand(rel, 1, \"Cross-Site Scripting (XSS)\"), tmp_path) is None\n"
+    }
+  ],
+  "summary": {
+    "total_groups": 16,
+    "likely_vulnerabilities": 0,
+    "uncertain": 7,
+    "likely_false_positives": 2,
+    "informational": 6,
+    "confirmed": 1
+  }
 }
